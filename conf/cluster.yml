@@ -1,0 +1,19 @@
+__default__:
+  cores: 1
+  ram: 8Gb
+
+STAR_index:
+  cores: 12
+  ram: 48Gb
+  
+STAR_pass1:
+  cores: 12
+  ram: 64Gb
+
+STAR_pass2:
+  cores: 12
+  ram: 64Gb
+
+qualimap:
+  cores: 12
+  ram: 64Gb
