@@ -1,0 +1,319 @@
+SAMPLES, = glob_wildcards('data/fastq/{sample}_R1.fastq.gz')
+CORES = 12
+RAM = "64G"
+
+rule all:
+    input:
+        expand('intermediate/fastQC/{sample}_R1_fastqc.zip', sample=SAMPLES),
+        expand('intermediate/fastQC/{sample}_R2_fastqc.zip', sample=SAMPLES),
+        'intermediate/STAR/GRCh38/',
+        expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+                 sample=SAMPLES),
+        expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.toTranscriptome.out.bam',
+                 sample=SAMPLES),
+        'results/tables/featureCounts/featureCounts_counts_gene.csv.gz',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
+        'results/reports/multiQC/multiqc_report.html'
+
+rule download_genome:
+    output:
+        'data/reference/GRCh38.primary_assembly.genome.fa'
+    log:
+        "logs/wget_genome_fasta.log"
+    params:
+        url = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_35/GRCh38.primary_assembly.genome.fa.gz'
+    shell:
+        '''
+        export ftp_proxy=http://192.168.100.1:80
+        wget -v -o {log} -P data/reference {params.url}
+        gunzip {output}.gz
+        '''
+
+rule download_genome_GTF:
+    output:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    log:
+        "logs/wget_genome_GTF_fasta.log"
+    params:
+        url = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_35/gencode.v35.primary_assembly.annotation.gtf.gz'
+    shell:
+        '''
+        export ftp_proxy=http://192.168.100.1:80
+        wget -v -o {log} -P data/reference {params.url}
+        gunzip {output}.gz
+        '''
+
+rule STAR_index:
+    input:
+        fa = 'data/reference/GRCh38.primary_assembly.genome.fa',
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    output:
+        outdir = directory('intermediate/STAR/GRCh38/'),
+    threads:
+        CORES
+    log:
+        'logs/STAR/index.log'
+    shell:
+        '''
+        mkdir -p {output.outdir}
+        STAR --runThreadN {threads} \
+            --runMode genomeGenerate \
+            --genomeDir {output} \
+            --genomeFastaFiles {input.fa} \
+            --sjdbGTFfile {input.gtf} \
+            --sjdbOverhang 100 \
+            > {log}
+        '''
+
+rule STAR_pass1:
+    input:
+        R1 = 'data/fastq/{sample}_R1.fastq.gz',
+        R2 = 'data/fastq/{sample}_R2.fastq.gz',
+        refdir = 'intermediate/STAR/GRCh38/',
+    params:
+        outdir = 'intermediate/STAR/{sample}_pass1/{sample}.',
+    output:
+        'intermediate/STAR/{sample}_pass1/{sample}.SJ.out.tab'
+    threads:
+        CORES
+    log:
+        'logs/STAR/{sample}_pass1.log'
+    shell:
+        '''
+        STAR --runThreadN {threads} \
+            --genomeDir {input.refdir} \
+            --readFilesIn {input.R1} {input.R2} \
+            --readFilesCommand zcat \
+            --outSAMtype BAM Unsorted \
+            --outFileNamePrefix {params.outdir} \
+            > {log}
+        rm {params.outdir}Aligned.out.bam \
+            {params.outdir}Log.out \
+            {params.outdir}Log.progress.out
+        '''
+
+rule STAR_filter:
+    input:
+        'intermediate/STAR/{sample}_pass1/{sample}.SJ.out.tab',
+    output:
+        'intermediate/STAR/SJ/{sample}_pass1_SJ.filtered.tab'
+    shell:
+        '''
+        awk "{{if (\$7 >= 3) print \$0}}" {input} > {output}
+        '''
+
+rule STAR_pass2:
+    input:
+        R1 = 'data/fastq/{sample}_R1.fastq.gz',
+        R2 = 'data/fastq/{sample}_R2.fastq.gz',
+        SJfiles = expand('intermediate/STAR/SJ/{sample}_pass1_SJ.filtered.tab',
+                         sample=SAMPLES),
+        refdir = 'intermediate/STAR/GRCh38/'
+    params:
+        outdir = 'intermediate/STAR/{sample}_pass2/{sample}.',
+    output:
+        'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+        'intermediate/STAR/{sample}_pass2/{sample}.Aligned.toTranscriptome.out.bam',
+        'intermediate/STAR/{sample}_pass2/{sample}.Log.final.out',
+    threads:
+        CORES
+    log:
+        'logs/STAR/{sample}_pass2.log'
+    shell:
+        '''
+        STAR --runThreadN {threads} \
+            --genomeDir {input.refdir} \
+            --readFilesIn {input.R1} {input.R2} \
+            --sjdbFileChrStartEnd {input.SJfiles} \
+            --quantMode GeneCounts TranscriptomeSAM \
+            --readFilesCommand zcat \
+            --outSAMtype BAM Unsorted \
+            --outFileNamePrefix {params.outdir} \
+            > {log}
+        '''
+
+rule qualimap:
+    input:
+        bam = 'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    output:
+        stats = 'intermediate/qualimap/{sample}_qualimap/rnaseq_qc_results.txt',
+        report = 'intermediate/qualimap/{sample}_qualimap/qualimapReport.html',
+        datadir = directory('intermediate/qualimap/{sample}_qualimap/raw_data_qualimapReport')
+    params:
+        ram = RAM,
+        dir = 'intermediate/qualimap/{sample}_qualimap'
+    log:
+        'logs/qualimap/{sample}_qualimap.log'
+    shell:
+        '''
+        qualimap rnaseq \
+            --java-mem-size={params.ram} \
+            --paired \
+            --sorted \
+            -bam {input.bam} \
+            -gtf {input.gtf}  \
+            -outdir {params.dir} \
+            &> {log}
+        '''
+
+rule featureCounts_gene:
+    input:
+        bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+                     sample=SAMPLES),
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    output:
+        counts = 'intermediate/featureCounts/featureCounts_counts_gene.csv',
+        log = 'logs/featureCounts_gene.log',
+    threads:
+        CORES
+    shell:
+        '''
+        featureCounts \
+            -T {threads} \
+            -p \
+            -s 2 \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o {output.counts} \
+            {input.bam} \
+            &> {output.log}
+        '''
+
+rule columnRename_gene:
+    input:
+        'intermediate/featureCounts/featureCounts_counts_gene.csv'
+    output:
+        'results/tables/featureCounts/featureCounts_counts_gene.csv'
+    params:
+        '\t'.join(str(e) for e in expand('{sample}', sample=SAMPLES))
+    shell:
+        '''
+        cut -f 1,7- {input} | \
+            tail -n +3 | \
+            sed -e "1igene\\t{params}" -e "s/gene://" | \
+            (sed -u 1q; sort) \
+            > {output}
+        '''
+
+rule featureCounts_exon:
+    input:
+        bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+                     sample=SAMPLES),
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf',
+        fa = 'data/reference/GRCh38.primary_assembly.genome.fa'
+    output:
+        counts = 'intermediate/featureCounts/featureCounts_counts_exon.csv',
+        jcounts = 'intermediate/featureCounts/featureCounts_counts_exon.csv.jcounts',
+        summary = 'intermediate/featureCounts/featureCounts_counts_exon.csv.summary',
+        log = 'logs/featureCounts_exon.log',
+    threads:
+        CORES
+    shell:
+        '''
+        featureCounts \
+            -T {threads} \
+            -p \
+            -t exon \
+            -g exon_id \
+            -J \
+            -s 2 \
+            -G {input.fa} \
+            -a {input.gtf} \
+            -o {output.counts} \
+            {input.bam} \
+            &> {output.log}
+        '''
+
+rule columnRename_exon:
+    input:
+        'intermediate/featureCounts/featureCounts_counts_exon.csv'
+    output:
+        'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv'
+    params:
+        '\t'.join(str(e) for e in expand('{sample}', sample=SAMPLES))
+    shell:
+        '''
+        awk 'NR==2 {{print "exon",$2,$3,$4,$5,$6,"{params}"}}; NR>2 {{print $0}}' \
+            {input} > {output}
+        '''
+
+rule extract_genes_exons:
+    input:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    output:
+        'intermediate/exon2gene.csv'
+    shell:
+        '''
+        awk '$3=="exon"' {input} | \
+            cut -f 9 | cut -d ";" -f 1,8 | sed 's/gene_id //;s/; exon_id//' \
+            > {output}
+       '''
+
+rule add_genes_exons:
+    input:
+        data = 'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
+        exon_gene = 'intermediate/exon2gene.csv'
+    output:
+        'results/tables/featureCounts/featureCounts_counts_exon.csv'
+    shell:
+        '''
+        Rscript code/exon2gene.R {input.data} {input.exon_gene} {output}
+        '''
+
+rule columnRename_jcounts:
+    input:
+        'intermediate/featureCounts/featureCounts_counts_exon.csv.jcounts'
+    output:
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts'
+    params:
+        '\t'.join(str(e) for e in expand('{sample}', sample=SAMPLES))
+    shell:
+        '''
+        awk 'NR==1 {{print "exon",$2,$3,$4,$5,$6,$7,$8,"{params}"}}; NR>1 {{print $0}}' \
+            {input} > {output}
+        '''
+
+rule multiqc:
+    input:
+        expand('intermediate/fastQC/{sample}_R1_fastqc.zip', sample=SAMPLES),
+        expand('intermediate/fastQC/{sample}_R2_fastqc.zip', sample=SAMPLES),
+        expand('intermediate/qualimap/{sample}_qualimap/rnaseq_qc_results.txt',
+                sample=SAMPLES),
+        expand('intermediate/qualimap/{sample}_qualimap/raw_data_qualimapReport',
+                sample=SAMPLES),
+        expand('intermediate/STAR/{sample}_pass2/{sample}.Log.final.out',
+                sample=SAMPLES),
+        'intermediate/featureCounts/featureCounts_counts_exon.csv',
+        'intermediate/featureCounts/featureCounts_counts_exon.csv.jcounts',
+        'intermediate/featureCounts/featureCounts_counts_exon.csv.summary',
+        'logs/featureCounts_exon.log'
+    output:
+        html = 'results/reports/multiQC/multiqc_report.html',
+        data = directory('results/reports/multiQC/multiqc_report_data/')
+    log:
+        'logs/multiQC/multiqc.log'
+    shell:
+        '''
+        multiqc \
+            -f \
+            -n {output.html} \
+            {input} \
+            &> {log}
+        '''
+
+rule featureCounts_gz:
+    input:
+        'results/tables/featureCounts/featureCounts_counts_gene.csv',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts'
+    output:
+        'results/tables/featureCounts/featureCounts_counts_gene.csv.gz',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
+        'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz'
+    shell:
+        '''
+        gzip {input}
+        '''
