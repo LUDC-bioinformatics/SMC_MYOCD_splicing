@@ -1,10 +1,10 @@
 ---
 title: "Myocardin splicing"
 author:
-   name: "Dmytro Kryvokhyzha & Shuyi Li"
+   name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "24 november, 2020"
+date: "04 december, 2020"
 output:
   html_document:
     keep_md: true
@@ -25,9 +25,9 @@ Email: [ola.hansson@med.lu.se](mailto:ola.hansson@med.lu.se),
 
 Smooth muscle cells from the human coronary artery were treated either with *Ad-CMV-null* or *Ad-CMV-MYOCD*, i.e. adenovirsuses that express nothing or myocardin under control of CMV promoter. There were 4 virus induced and 4 control samples. Timepoint: ~ 96h or 120h or 140h. They were RNA-Seq sequenced using Stranded Total RNA Library Prep kit.
 
-The raw sequecing data is stored in `201022_NB501805_0127_AHY7KCBGXG`.
+The raw sequencing data is stored in `201022_NB501805_0127_AHY7KCBGXG`.
 
-We want to test whether myocarding is a splicing regulator. To that end, we look for
+We want to **test whether myocarding is a splicing regulator**. To that end, we look for
 splicing variation in several genes that are over-expressed by viral transduction of
 myocarding.
 
@@ -39,7 +39,7 @@ split into wells that get either null or *MYOCD*.
 
 Expression of myocardin (*MYOCD*) can be used as control.
 
-As positive control genes verifying that *MYOCD* overexpression worked we can look at *MYH11*, MCAM and SYNM for example. In addition there are hundreds of genes that respond well, but not as much as those above. It would be important to know if much less responsive target genes have also moved in the experiment. Examples include *RRAS*, *RBPMS*, and *RBPMS2*. Two of these (*RBPMS* and *RBPMS2*) are the splicing factors that we believe are regulated by *MYOCD* and that effectuate dowstream changes in splicing. Imoprtant to know consequently if they change.
+As positive control genes verifying that *MYOCD* over expression worked we can look at *MYH11*, *MCAM* and *SYNM* for example. In addition there are hundreds of genes that respond well, but not as much as those above. It would be important to know if much less responsive target genes have also moved in the experiment. Examples include *RRAS*, *RBPMS*, and *RBPMS2*. Two of these (*RBPMS* and *RBPMS2*) are the splicing factors that we believe are regulated by *MYOCD* and that effectuate downstream changes in splicing. Important to know consequently if they change.
 
 We also have qPCR information in *MYH11, MCAM, KCNMB1*:
 
@@ -51,7 +51,7 @@ Differentially splicing of the following genes is of interest:
 TGFB11, PKD1, MYL6, PDLIM5, FLNA, MBNL1, ZFR, FNBP1, SORBS1, PIP5K1C,
 TNRC18, SVIL, KLHL42, LARGE1, MICAL3*
 
-This is provided that *RBPMS* and *RBPMS* are differentially expressed.
+This is provided that *RBPMS* and *RBPMS2* are differentially expressed.
 
 ## Data
 
@@ -74,7 +74,8 @@ conda activate myocardin
 
 ### Quality Control (QC)
 
-Quality Control (QC) of the fastq files and other data are summarized in `~/results/reports/multiQC`
+Quality Control (QC) of the fastq files and other data are summarized in
+`results/reports/multiQC`
 
 ### Map and count reads at exon and gene level
 
@@ -91,7 +92,7 @@ snakemake -s code/Snakefile \
    -j 100 \
    -p --use-conda \
    --cluster-config conf/cluster.yml \
-   --cluster "condor_qsub -o logs/{rule}.out -e logs/{rule}.err -l procs={cluster.cores},mem={cluster.ram} -m e -V"
+   --cluster "condor_qsub -o logs/{rule}.out -e logs/{rule}.err -l procs={cluster.cores},mem={cluster.ram} -V"
 ```
 
 Results:
@@ -100,7 +101,7 @@ Results:
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.gz` - exon counts data.
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts` - number of reads supporting each exon-exon junction.
 
-### Differential expression
+### Differential gene expression
 
 Performed with [DESeq2](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html):
 
@@ -111,11 +112,45 @@ R -e 'rmarkdown::render("code/DESeq.Rmd", output_dir="results/reports/")'
 
 Results:
 
-- `results/reports/DESeq.html` - notebook describing the analysis.
+- `results/reports/DESeq.html` - report describing the analysis.
 
-- `results/tables/DESeq/DESeq.csv` - differential expression results.
+- `results/tables/DESeq/DESeq_all.xlsx` - differential expression results.
 
-- `results/tables/DESeq/counts.csv` - raw counts, CPM, FPKM.
+- `results/tables/DESeq/DESeq_interesting.xlsx` - differential expression results
+  for provided list of potential candidate genes.
 
+Column names in the tables:
+
+- *baseMean* - mean of normalized counts for all samples. 
+- *log2FoldChange* - log2 fold change (MLE): condition treatment vs control.
+- *lfcSE* - standard error.
+- *stat* - Wald statistic.
+- *pvalue* - Wald test p-value.
+- *padj* - BH adjusted p-values.
+- *\_tpm* - transcript per million (TPM) normalized count data.
+
+**TPM normalization**.
+
+Divide the read counts by the length of each gene in kilobases. This gives you reads per kilobase (RPK).
+Count up all the RPK values in a sample and divide this number by 1,000,000. This is your "per million" scaling factor.
+Divide the RPK values by the "per million" scaling factor. This gives you TPM.
+
+When you use TPM, the sum of all TPMs in each sample are the same. This 
+makes it easier to compare the proportion of reads that mapped to a gene
+in each sample. In contrast, with RPKM and FPKM, the sum of the 
+normalized reads in each sample may be different, and this makes it 
+harder to compare samples directly.
+
+Here’s an example. If the TPM for gene A in Sample 1 is 3.33 and the TPM
+in sample B is 3.33, then I know that the exact same proportion of 
+total reads mapped to gene A in both samples. This is because the sum of
+the TPMs in both samples always add up to the same number (so the 
+denominator required to calculate the proportions is the same, 
+regardless of what sample you are looking at.)
+
+
+### Splicing
+
+...
 
 

@@ -1,4 +1,4 @@
-# conda list -e | grep -E "bioconductor-deseq2|bioconductor-ihw|multiqc|r-ggplot2|r-knitr|r-pheatmap|r-rcolorbrewer|r-rmarkdown|r-sm|r-reshape|snakemake|star|qualimap|subread"
+# conda list -e | grep -E ""
 # conda env update --file conf/conda.yml  --prune
 # conda env remove --name myocardin
 # conda env create -f conf/conda.yml
@@ -13,12 +13,14 @@ channels:
   
 dependencies:
   - bioconductor-deseq2=1.26.0=r36he1b5a44_0
-  - bioconductor-ihw=1.14.0=r36_0
+  - bioconductor-mygene=1.22.0=r36_0
   - r-ggplot2=3.3.2=r36hc72bb7e_1
   - r-knitr=1.30=r36h6115d3f_0
   - r-pheatmap=1.0.12=r36h6115d3f_2
   - r-rcolorbrewer=1.1_2=r36h6115d3f_1003
   - r-rmarkdown=2.5=r36h142f84f_0
+  - r-reshape2=1.4.4=r36h0357c0b_1
+  - r-sm=2.2_5.6=r36h31ca83e_1004
   - multiqc=1.9=py_1
   - snakemake-minimal=5.30.1=py_0
   - star=2.7.6a=0

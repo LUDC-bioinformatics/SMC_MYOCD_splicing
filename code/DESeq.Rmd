@@ -1,0 +1,402 @@
+---
+title: "Myocardin splicing: differential gene expression analysis"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(DESeq2)
+library(RColorBrewer)
+library(ggplot2)
+library(mygene)
+library(sm)
+library(reshape2)
+```
+
+## Data
+
+Load the raw counts data:
+
+```{r, message=FALSE}
+read_counts <- read.table(gzfile('results/tables/featureCounts/featureCounts_counts_gene.csv.gz'),
+                          header=T, row.names='gene')
+```
+
+Extract gene length:
+
+```{r}
+gene_length <- read_counts$length
+read_counts$length <- NULL
+names(gene_length) <- row.names(read_counts)
+```
+
+Sort columns:
+
+```{r}
+read_counts <- read_counts[,sort(names(read_counts))]
+knitr::kable(head(read_counts))
+```
+
+### Library size & counts distribution
+
+Library size barplot & counts distribution boxplot
+
+```{r, fig.height=7}
+colors2 <- brewer.pal(3, 'Accent')[c(1,2)]
+condition_color <- c(rep(colors2[1], 4),rep(colors2[2], 4))
+par(mfcol=c(2,1))
+# Library size
+libsize <- colSums(read_counts)/1000000
+barplot(libsize,
+        ylim = c(0,50),
+        names.arg=names(read_counts),
+        col= condition_color,
+        ylab = 'Million reads',
+        main = 'Library size',
+        las =2)
+abline(h=50, lty=2)
+# counts distribution boxplot
+logCPM <- log2((read_counts+1)/colSums(read_counts+1)*1e+06)
+boxplot(logCPM,
+        xlab='',
+        ylab='log2(CPM)',
+        notch	=T,
+        col = condition_color,
+        outline=FALSE,
+        main = 'Counts distribution',
+        las=2)
+abline(h=median(as.matrix(logCPM)), lty=2, col='lightgrey')
+```
+
+Samples density plot
+
+```{r}
+condition <- c(rep('control', 4), rep('treatment', 4))
+logCPM_dens <- data.frame(logCPM=as.vector(t(logCPM)),
+                          samples=rep(colnames(logCPM), dim(logCPM)[1]),
+                          condition=rep(condition, dim(logCPM)[1]))
+# samples density plot
+sm.density.compare(logCPM_dens$logCPM,
+                   logCPM_dens$samples,
+                   xlab='Log2 counts per million')
+title(main='Samples counts distribution')
+colfill<-c(2:(2+length(levels(logCPM_dens$samples)))) 
+legend('topright',
+       levels(logCPM_dens$samples),
+       col=colfill,
+       lty=c(1:length(logCPM_dens$samples)),
+       lwd=1,
+       ncol=2,
+       cex=0.7)
+```
+
+condition density plot
+
+```{r}
+ggplot(logCPM_dens, aes(x = logCPM, colour = condition)) +
+  geom_density(alpha = 0.5, size = 1.5) + theme_bw() +
+  theme(legend.position = 'top') + xlab(expression(log[2](count + 1)))
+```
+
+### DESeq object
+
+Create DESeq object:
+
+```{r, message=FALSE, error=FALSE}
+colData <- data.frame(samples=names(read_counts), condition)
+dds <- DESeqDataSetFromMatrix(countData = read_counts,
+                              colData = colData,
+                              design= ~ condition)
+```
+
+Remove lowly expressed genes
+
+```{r}
+keep <- rowSums(counts(dds)) >= dim(dds)[2]
+dds <- dds[keep,]
+sum(keep)
+```
+
+Perform variance stabilizing transformation
+
+```{r, message=FALSE, error=FALSE}
+vst <- vst(dds, blind=T)
+dds <- DESeq(dds)
+```
+
+### Dispersion plot
+
+```{r}
+plotDispEsts(dds)
+```
+
+### MYOCD expression
+
+```{r}
+plotKD <- plotCounts(dds, gene='ENSG00000141052.18',
+                     intgroup='condition',
+                     returnData=TRUE)
+ggplot(plotKD, aes(x=condition, y=count, colour = condition)) +
+  theme_bw() + 
+  ggtitle('MYOCD (ENSG00000141052)') +
+  geom_point(size=3) +
+  geom_text(label=rownames(plotKD), size=3, hjust=-0.5, vjust=0)
+```
+
+This image is also available as a file `results/figures/MYOCD_expression.pdf`
+
+```{r, include=FALSE}
+filePath <- 'results/figures'
+dir.create(filePath, showWarnings = FALSE)
+pdf(paste(filePath, 'MYOCD_expression.pdf', sep="/"),
+    width = 7, height = 5)
+ggplot(plotKD, aes(x=condition, y=count, colour = condition)) +
+  theme_bw() + 
+  ggtitle('MYOCD (ENSG00000141052)') +
+  geom_point(size=3) +
+  geom_text(label=rownames(plotKD), size=3, hjust=-0.5, vjust=0)
+dev.off()
+```
+
+### PCA
+
+```{r, message=FALSE, error=FALSE}
+plotPCA(vst, intgroup='condition') +
+  theme_bw() +
+  scale_x_continuous(limits = c(-30, 30)) +
+  scale_y_continuous(limits = c(-6, 6)) +
+  geom_text(label=vst$samples, size=3, hjust=0.5, vjust=-1)
+```
+
+## Differential expression
+
+Significance level
+
+```{r}
+signLevel <- 0.01
+```
+
+### Results
+
+```{r}
+res <- results(dds,
+               contrast=c('condition',  'treatment', 'control'),
+               alpha=signLevel)
+res <- res[order(res$padj),]
+summary(res)
+```
+
+Volcano plot:
+
+```{r}
+plot(res$log2FoldChange, -log10(res$padj),
+     main='Volcano plot',
+     xlab='log2FC',
+     ylab='-log10(pvalue)',
+     pch=16, cex=0.8)
+```
+
+### Annotate with gene names and summary
+
+Add TPM column (takes a while):
+
+```{r}
+sum(names(gene_length) != row.names(read_counts)) # = 0
+read_counts_length <- read_counts/gene_length
+dds_tpm <- t(t(read_counts_length)*1e6/colSums(read_counts_length))
+colnames(dds_tpm) <- paste(colnames(dds_tpm), 'tpm', sep = '_')
+# calculate means
+mean_tpm <- aggregate(t(dds_tpm), list(condition), mean)
+# transform the results
+mean_tpm_names <- as.character(mean_tpm[,1])
+mean_tpm_val <- as.data.frame(t(mean_tpm[,-1]))
+colnames(mean_tpm_val) <- paste(mean_tpm_names, 'tpm', sep = '_')
+# merge
+res_mean_tpm_val <- merge(as.data.frame(res), mean_tpm_val, by=0, all.x = T)
+rownames(res_mean_tpm_val) <- res_mean_tpm_val$Row.names
+res_mean_tpm_val$Row.names <- NULL
+res_tpm_mean <- merge(res_mean_tpm_val, dds_tpm, by=0, all.x = T)
+rownames(res_tpm_mean) <- res_tpm_mean$Row.names
+res_tpm_mean$Row.names <- NULL
+# head(res_tpm_mean)
+```
+
+Retrieve the annotation information (takes a while):
+
+```{r, message=FALSE, error=FALSE}
+gene_renamed <- gsub("\\..*","", rownames(res_tpm_mean))
+annotAll <- queryMany(unique(gene_renamed),
+                      scopes='ensembl.gene',
+                      fields='symbol,name,summary', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+# add full gene names
+gene2renamed <- data.frame(gene=rownames(res_tpm_mean), query=gene_renamed)
+annotAll <- merge(annotAll, gene2renamed, by='query')
+# remove duplicated and not found rows:
+duplNoSumNoFound <- which(duplicated(annotAll$query))
+annot <- as.data.frame(annotAll[-duplNoSumNoFound,
+                                c('gene', 'query', 'symbol', 'name', 'summary')])
+rownames(annot) <- annot$gene
+#head(annot, 2)
+```
+
+Merge the annotation with the results table:
+
+```{r}
+res_tpm_mean_annot <- merge(res_tpm_mean, annot, by=0, all.x = T)
+res_tpm_mean_annot$Row.names <- NULL
+res_tpm_mean_annot$query <- NULL
+front_columns <- c('gene', 'baseMean','log2FoldChange', 'lfcSE', 'stat','pvalue','padj',
+                   'control_tpm', 'treatment_tpm',
+                   'symbol', 'name', 'summary')
+back_columns <-  colnames(res_tpm_mean_annot)[which(!(colnames(res_tpm_mean_annot) %in% front_columns))]
+res_tpm_mean_annot <- res_tpm_mean_annot[,c(front_columns, back_columns)]
+# order by padj
+res_tpm_mean_annot <- res_tpm_mean_annot[order(res_tpm_mean_annot$padj),]
+rownames(res_tpm_mean_annot) <- res_tpm_mean_annot$gene
+```
+
+### Plot significant genes
+
+Top 30 genes
+
+```{r, fig.width=10, fig.height=5, message=FALSE}
+# Get top genes
+ntop <- 30
+ntop_genes <- c(1:ntop)
+sign_genes_names <- res_tpm_mean_annot$symbol[ntop_genes]
+res_tpm_all <- res_tpm_mean_annot[!duplicated(res_tpm_mean_annot$gene),
+                                    grep('CMV|MY', names(res_tpm_mean_annot))]
+countsNorm <- log2(as.matrix(res_tpm_all[ntop_genes,]))
+colnames(countsNorm) <- gsub('_tpm', '', colnames(countsNorm)) 
+rownames(countsNorm) <- sign_genes_names
+# melt
+top_genes_norm_melt <- melt(countsNorm)
+colnames(top_genes_norm_melt) <- c('gene', 'samplename', 'normalized_counts')
+# add annonation
+meta_exp_levels <- data.frame(condition=condition, samplename=names(read_counts))
+top_genes_norm <- merge(top_genes_norm_melt, meta_exp_levels, by='samplename')
+# order by genes
+top_genes_norm <- top_genes_norm[order(top_genes_norm$gene),]
+# plot
+ggplot(top_genes_norm) +
+        geom_point(aes(x = gene,
+                       y = normalized_counts,
+                       color = condition,
+                       shape=condition),
+                   position=position_jitter(w=0.2,h=0)) +
+        xlab("Genes") +
+        ylab("TPM counts") +
+        ggtitle(paste("Top ", ntop, " Significant DE Genes", sep = "")) +
+        theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme(plot.title=element_text(hjust=0.5))
+```
+
+## Positive control genes
+
+*MYH11*, *MCAM* and *SYNM* can be used to verify that *MYOCD* over-expression worked
+
+There are also much less responsive target genes: *RRAS*, *RBPMS*, and *RBPMS2*.
+  
+We also have qPCR information in *MYH11, MCAM, KCNMB1*. 
+
+Differentially splicing of the following genes is of interest:
+*ACTN1, SMTN, NFIC, BICD2, TEAD1, TPM1, TPM2, PDLIM7, FHL1, CSR2,
+TGFB11, PKD1, MYL6, PDLIM5, FLNA, MBNL1, ZFR, FNBP1, SORBS1, PIP5K1C,
+TNRC18, SVIL, KLHL42, LARGE1, MICAL3*
+
+### Table 
+
+```{r}
+interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
+                       'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
+                       'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5', 
+                       'FLNA', 'MBNL1', 'ZFR', 'FNBP1', 'SORBS1', 'PIP5K1C',
+                       'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
+ntop_genes <- as.character(res_tpm_mean_annot$gene[which(res_tpm_mean_annot$symbol
+                                                         %in% interesting_genes)])
+res_tpm_mean_annot_interesting <- res_tpm_mean_annot[ntop_genes,] 
+res_tpm_mean_annot_interesting$pvalue <- format(res_tpm_mean_annot_interesting$pvalue, digits = 3)
+res_tpm_mean_annot_interesting$padj <- format(res_tpm_mean_annot_interesting$pvalue, digits = 3)
+col_interesting <- c("symbol", "log2FoldChange", "control_tpm","treatment_tpm", "pvalue", "padj")
+knitr::kable(res_tpm_mean_annot_interesting[,col_interesting])
+```
+
+### Plot
+
+```{r, fig.width=10, fig.height=5, message=FALSE}
+# Get top genes
+res_tpm_all <- res_tpm_mean_annot_interesting[ntop_genes,grep('CMV|MY|symbol', names(res_tpm_mean_annot_interesting))]
+rownames(res_tpm_all) <- res_tpm_all$symbol
+res_tpm_all$symbol <- NULL
+countsNorm <- log2(as.matrix(res_tpm_all))
+colnames(countsNorm) <- gsub('_tpm', '', colnames(countsNorm)) 
+# melt
+top_genes_norm_melt <- melt(countsNorm)
+colnames(top_genes_norm_melt) <- c('gene', 'samplename', 'normalized_counts')
+# add annonation
+meta_exp_levels <- data.frame(condition=condition, samplename=names(read_counts))
+top_genes_norm <- merge(top_genes_norm_melt, meta_exp_levels, by='samplename')
+# order by genes
+top_genes_norm <- top_genes_norm[order(top_genes_norm$gene),]
+# plot
+ggplot(top_genes_norm) +
+        geom_point(aes(x = gene,
+                       y = normalized_counts,
+                       color = condition,
+                       shape=condition),
+                   position=position_jitter(w=0.2,h=0)) +
+        xlab("Genes") +
+        ylab("log2 TPM counts") +
+        ggtitle('Positive control genes') +
+        theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme(plot.title=element_text(hjust=0.5))
+```
+
+## Write results
+
+```{r}
+filePath <- 'results/tables/diff_expression_genes/'
+dir.create(filePath, showWarnings = FALSE)
+# all results
+write.table(res_tpm_mean_annot,
+            paste(filePath, 'DESeq_all.csv', sep=''),
+            quote = F,
+            row.names = F,
+            sep = '\t')
+# only candidate genes
+write.table(res_tpm_mean_annot_interesting,
+            paste(filePath, 'DESeq_interesting.csv', sep=''),
+            row.names = F,
+            quote = F,
+            sep = '\t')
+```
+
+```{bash, include=FALSE}
+cd results/tables/diff_expression_genes/
+for i in DESeq_*.csv;
+  do
+    soffice --headless \
+            --convert-to xlsx:"Calc MS Excel 2007 XML" \
+            --infilter="csv:9,34,UTF8" $i;
+  done
+cd -
+```
