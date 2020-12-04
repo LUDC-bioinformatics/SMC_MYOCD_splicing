@@ -191,9 +191,9 @@ rule columnRename_gene:
         '\t'.join(str(e) for e in expand('{sample}', sample=SAMPLES))
     shell:
         '''
-        cut -f 1,7- {input} | \
+        cut -f 1,6- {input} | \
             tail -n +3 | \
-            sed -e "1igene\\t{params}" -e "s/gene://" | \
+            sed -e "1igene\\tlength\\t{params}" -e "s/gene://" | \
             (sed -u 1q; sort) \
             > {output}
         '''
