@@ -1,4 +1,4 @@
-# conda list -e | grep -E ""
+# conda list -e | grep -E "bioconductor-dexseq|htseq|pysam"
 # conda env update --file conf/conda.yml  --prune
 # conda env remove --name myocardin
 # conda env create -f conf/conda.yml
@@ -26,3 +26,5 @@ dependencies:
   - star=2.7.6a=0
   - qualimap=2.2.2a=1
   - subread=2.0.1=hed695b0_0
+  - bioconductor-dexseq=1.32.0=r36_0
+  - htseq=0.13.5=py36h0234e80_0

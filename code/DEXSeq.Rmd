@@ -1,0 +1,169 @@
+---
+title: "Myocardin splicing: differential exon usage analysis"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:    
+    code_folding: show
+    toc: true
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(DEXSeq)
+library(BiocParallel)
+# library(RColorBrewer)
+# library(ggplot2)
+# library(mygene)
+# library(sm)
+# library(reshape2)
+```
+
+## Data
+
+Load the counts:
+
+```{r}
+countFiles <- list.files('results/tables/DEXSeq/', full.names=TRUE)
+sampleTable <- data.frame(row.names = c("CMV1", "CMV2", "CMV4", "CMV5",
+                                        "MYO1", "MYO2", "MYO4", "MYO5"),
+                          condition = c(rep('control', 4), rep('treatment', 4)))
+flattenedFile <- 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf'
+countFiles <- 
+dxd <- DEXSeqDataSetFromHTSeq(countFiles,
+                              sampleData=sampleTable,
+                              design= ~ sample + exon + condition:exon,
+                              flattenedfile=flattenedFile)
+colData(dxd)
+```
+
+Subset data for development
+```{r}
+dxd <- dxd[sample(nrow(dxd), 10000), ]
+```
+
+
+Counts:
+
+```{r}
+head(featureCounts(dxd), 5)
+```
+
+Print the first 3 lines of the feature data annotation:
+
+```{r}
+head(rowRanges(dxd), 3)
+```
+
+Check the design:
+
+```{r}
+sampleAnnotation(dxd)
+```
+
+
+Exon counts are split into two categoris. 
+The first 8 columns correspond to the number of reads mapping to 
+out exonic regions and the last 8 columns correspond to the sum of the counts 
+mapping to the rest of the exons from the same gene on each sample.
+
+```{r}
+head(counts(dxd), 5 )
+split(seq_len(ncol(dxd)), colData(dxd)$exon )
+```
+
+
+## Normalisation & dispersion estimation
+
+The same method as in DESeq2:
+
+```{r}
+ncores <- MultiCoreParam(6)
+dxd <- estimateSizeFactors(dxd, BPPARAM=ncores)
+dxd <- estimateDispersions(dxd, BPPARAM=ncores)
+```
+
+Plot disprrssion:
+
+```{r}
+plotDispEsts(dxd)
+```
+
+## Differential exon usage
+
+*DEXSeq* fits a generalized linear model with the formula 
+`~ sample + exon + condition:exon` and compare it to the null model) `~ sample + exon`.
+The deviances of both fits are compared using a χ2-distribution, providing a p value.
+
+We test whether the fraction of the genes reads that fall onto the exon under the test 
+differs significantly between the experimental conditions.
+
+```{r}
+ncores <- MulticoreParam(6)
+dxr <- DEXSeq(dxd, BPPARAM=ncores)
+```
+
+Results:
+
+```{r}
+head(dxr, 5)
+```
+
+Description of each column:
+
+```{r}
+mcols(dxr)$description
+```
+
+How many exonic exons are significant with a false discovery rate of 1%?
+
+```{r}
+sum(dxr$padj < 0.01, na.rm = T)
+```
+
+How many genes are affected?
+
+```{r}
+sum(tapply(dxr$padj < 0.01, dxr$groupID, any), na.rm = T)
+```
+
+```{r}
+plotMA(dxr, cex=1)
+```
+
+## Visualization
+
+```{r}
+head(dxr[order(dxr$padj),'groupID'])
+```
+
+```{r}
+plotDEXSeq(dxr, "ENSG00000065534.19",
+           legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+```
+
+## FDR at the gene level
+
+DEXSeq returns one p-value for each exonic region.
+However, sometimes it is informative to know what is the FDR at the gene level,
+i.e. knowing the numer of genes with at least one differentially used exon
+while keeping control of FDR.
+
+```{r}
+numbOfGenes <- sum( perGeneQValue(dxr) < 0.01)
+numbOfGenes
+```
+
+## Preprocessing using featureCounts
+
+See https://github.com/vivekbhr/Subread_to_DEXSeq. It seems like there is no benefits
+of using featureCounts with DEXSeq.

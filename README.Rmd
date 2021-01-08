@@ -72,14 +72,12 @@ conda env create -f conf/conda.yml
 conda activate myocardin
 ```
 
-## Analysis
-
-### Quality Control (QC)
+## Quality Control (QC)
 
 Quality Control (QC) of the fastq files and other data are summarized in
 `results/reports/multiQC`
 
-### Map and count reads at exon and gene level
+## Map and count reads at exon and gene level
 
 1. Map reads to the genome reference with [STAR](https://github.com/alexdobin/STAR) 
 in 2-pass mode.
@@ -102,7 +100,7 @@ Results:
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.gz` - exon counts data.
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts` - number of reads supporting each exon-exon junction.
 
-### Differential gene expression
+## Differential gene expression
 
 Performed with [DESeq2](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html):
 
@@ -149,7 +147,22 @@ denominator required to calculate the proportions is the same,
 regardless of what sample you are looking at.)
 
 
-### Splicing
+## Differential exon usage
+
+Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html):
+
+```{bash}
+R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+- `results/reports/DEXSeq.html` - report describing the analysis.
+
+- `results/tables/DEXSeq/DEXSeq_all.xlsx` - differential expression results.
+
+- `results/tables/DESeq/DEXSeq_interesting.xlsx` - differential expression results
+  for provided list of potential candidate genes.
 
 ...
 
@@ -165,5 +178,5 @@ rsync -rv --dry-run --progress -e 'ssh -p 22022' \
    --exclude="notes" \
    --exclude="intermediate" \
    ~/Science/myocardin_splicing_Ola_Karl/ \
-   dmytro_k@indigo.crc.med.lu.se:/ludc/Active_Projects/myocardin_splicing_Ola_Karl/
+   dmytro_k@indigo.crc.med.lu.se:/ludc/Active_Projects/myocardin_splicing/Private/
 ```

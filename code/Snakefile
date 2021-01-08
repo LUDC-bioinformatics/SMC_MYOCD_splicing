@@ -14,7 +14,9 @@ rule all:
         'results/tables/featureCounts/featureCounts_counts_gene.csv.gz',
         'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
         'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
-        'results/reports/multiQC/multiqc_report.html'
+        'results/reports/multiQC/multiqc_report.html',
+        'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf',
+        expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES)
 
 rule download_genome:
     output:
@@ -316,4 +318,36 @@ rule featureCounts_gz:
     shell:
         '''
         gzip {input}
+        '''
+
+rule dexseq_prepare_annotation:
+  input:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf.gz'
+    output:
+        gtf = 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf',
+        log = 'logs/dexseq_count.log',
+    shell:
+        '''
+        python ~/Programs/miniconda3/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_prepare_annotation.py \
+        {input.gtf} \
+        {output.gtf} \
+        &> {output.log}
+        '''
+
+rule dexseq_count:
+    input:
+        bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+                     sample=SAMPLES),
+        gtf = 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf'
+    output:
+        counts = 'results/tables/DEXSeq/{sample}.csv',
+        log = 'logs/dexseq_count.log',
+    shell:
+        '''
+        python ~/Programs/miniconda3/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_count.py \
+        -p yes -r name -s reverse -f bam \
+        {input.gtf} \
+        {input.bam} \
+        {output.counts} \
+        &> {output.log}
         '''
