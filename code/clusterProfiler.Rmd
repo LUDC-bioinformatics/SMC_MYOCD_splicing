@@ -1,0 +1,225 @@
+---
+title: "DNA-Seq Dogs diet adaptation analysis: clusterProfiler"
+author: "Dmytro Kryvokhyzha"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, eval = TRUE)
+knitr::opts_knit$set(root.dir = '../')
+setwd('/home/dmytro/Science/DNA_Agrarian_vs_Arctic')
+```
+
+## Dependencies
+
+```{r, message=FALSE}
+library(clusterProfiler)
+library(cowplot)
+library(enrichplot)
+library(pathview)
+library(ggplot2)
+library(org.Hs.eg.db)
+```
+
+## Load the data
+
+```{r}
+d <- read.table('results/tables/DESeq/DESeq_all.csv',
+                comment.char='',
+                sep = "\t",
+                quote = "\"",
+                header = T)[,c('gene', 'entrez', 'log2FoldChange', 'pvalue', 'padj')]
+head(d, 2)
+```
+
+## GSE
+
+```{r}
+nPerm <- 10000
+minGSSize <- 10
+maxGSSize <- 1000
+```
+
+### Create entrez list
+
+```{r}
+log2FC_entrez <- d$log2FoldChange[!is.na(d$entrez)]
+names(log2FC_entrez) <- d$entrez[!is.na(d$entrez)]
+log2FC_entrez <- sort(log2FC_entrez, decreasing = T)
+
+log2FC_ensembl <- d$log2FoldChange
+names(log2FC_ensembl) <- gsub("\\..*","", d$gene)
+log2FC_ensembl <- sort(log2FC_ensembl, decreasing = T)
+
+head(log2FC_entrez)
+head(log2FC_ensembl)
+```
+
+### KEGG
+
+```{r}
+KEGGgse <- gseKEGG(log2FC_entrez,
+                   organism = 'hsa',
+                   nPerm = nPerm,
+                   minGSSize = minGSSize,
+                   maxGSSize = maxGSSize, 
+                   pvalueCutoff = 0.1,
+                   verbose = FALSE)
+KEGGgse <- setReadable(KEGGgse, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+KEGGgse[order(KEGGgse$NES, decreasing = T),c('Description', 'NES')]
+```
+
+```{r}
+dotplot(KEGGgse, showCategory=30)
+```
+
+```{r}
+ridgeplot(KEGGgse)
+```
+
+```{r}
+emapplot(KEGGgse, showCategory = 100)
+```
+
+```{r}
+pdf('/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/KEGGgse.pdf',
+    width=30, height = 20)
+print(cnetplot(KEGGgse, categorySize="pvalue", foldChange=log2FC_entrez, showCategory = 18))
+dev.off()
+```
+
+```{r}
+gseaplot(KEGGgse, by = "all", title = KEGGgse$Description[1], geneSetID = 1)
+```
+
+### GO
+
+```{r}
+GOres <- gseGO(log2FC_ensembl,
+               ont = "ALL",
+               keyType='ENSEMBL',
+               nPerm = nPerm,
+               minGSSize = minGSSize,
+               maxGSSize = maxGSSize,
+               pAdjustMethod = 'fdr',
+               pvalueCutoff = 0.1,
+               verbose = FALSE,
+               OrgDb = org.Hs.eg.db)
+GOres <- setReadable(GOres, OrgDb = org.Hs.eg.db, keyType="ENSEMBL")
+GOres[order(GOres$NES, decreasing = T),c('Description', 'NES')]
+```
+
+```{r, eval=FALSE, echo=FALSE}
+dotplot(GOres, x = "Count", showCategory=30) + ggtitle("Agrarian")
+```
+
+```{r, eval=FALSE, echo=FALSE}
+ridgeplot(GOres) + labs(x = "enrichment distribution")
+```
+
+```{r, eval=FALSE, echo=FALSE}
+emapplot(GOres, showCategory = 100)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+cnetplot(GOres, categorySize="pvalue", foldChange=agr_stats_ids, showCategory = 3)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+gseaplot(GOres, by = "all", title = GOres$Description[1], geneSetID = 1)
+```
+
+## Over-representation
+
+Create significant only lists
+
+```{r}
+DEgene <- gsub("\\..*","", d$gene[which(d$padj < 0.001)])
+Allgene <- gsub("\\..*","", d$gene)
+
+DEentrez <- d$entrez[which(!is.na(d$entrez) & d$padj < 0.001)]
+Allentrez <- d$entrez[!is.na(d$entrez)]
+
+length(DEgene)
+length(Allgene)
+length(DEentrez)
+length(Allentrez)
+```
+
+### KEGG
+
+```{r}
+KEGGenrich <- enrichKEGG(DEentrez,
+                        qvalueCutoff = 0.01,
+                        minGSSize = minGSSize,
+                        maxGSSize = maxGSSize,
+                        universe=Allentrez,
+                        organism='hsa')
+KEGGenrich <- setReadable(KEGGenrich, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+KEGGenrich[order(KEGGenrich$p.adjust),c('Description', 'p.adjust')]
+```
+
+### KEGG Module
+
+```{r}
+KEGGenrich_km <- enrichMKEGG(DEentrez,
+                            universe=Allentrez,
+                            qvalueCutoff = 0.01,
+                            minGSSize = minGSSize,
+                            maxGSSize = maxGSSize,
+                            organism = 'hsa')
+KEGGenrich_km[order(KEGGenrich_km$p.adjust),c('Description', 'p.adjust')]
+```
+
+### GO
+
+```{r}
+GOenrich <- enrichGO(DEgene,
+                     ont = "ALL",
+                     qvalueCutoff = 0.01,
+                     keyType = "ENSEMBL",
+                     minGSSize = minGSSize,
+                     maxGSSize = maxGSSize,
+                     universe=Allgene,
+                     OrgDb = org.Hs.eg.db)
+GOenrich <- setReadable(GOenrich, OrgDb = org.Hs.eg.db, keyType="ENSEMBL")
+GOenrich[order(GOenrich$p.adjust),c('Description', 'p.adjust')]
+```
+
+## Save
+
+Save results
+
+```{r, eval = FALSE}
+dir.create("results/tables/clusterProfiler", showWarnings=F)
+
+for (f in c('KEGGenrich', 'GOenrich')){
+  res <- as.data.frame(get(f))
+  write.table(res[,],
+              paste("results/tables/clusterProfiler/", f, ".csv",
+                    sep = ""),
+              row.names = F,
+              sep = "\t")
+}
+```
+
+## Input for enrichmentMap
+
+```{r, eval=FALSE}
+dir.create("results/tables/clusterProfiler/enrichmentMap", showWarnings=F)
+
+gseNames <- c("ID", "Description", "pvalue", "qvalues", "NES", "core_enrichment")
+gseNamesP <- c('ID',	'Description',	'pvalue', 'qvalue', 'NES', 'genes')
+
+for (f in c('KEGGgse', 'gse_arc_KEGG', 'GOres', 'gse_arc_GO')){
+  res <- as.data.frame(get(f))[,gseNames]
+  names(res) <- gseNamesP
+  res$genes <- gsub("/", ",", res$genes)
+  write.table(res,
+              paste("results/tables/clusterProfiler/enrichmentMap/", f, ".txt", sep = ""),
+              row.names = F, quote = T, sep = "\t")
+}
+```
