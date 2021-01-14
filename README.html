@@ -283,12 +283,11 @@ conda activate myocardin</code></pre>
 <div id="differential-exon-usage" class="section level2">
 <h2>Differential exon usage</h2>
 <p>Performed with <a href="https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html">DEXSeq</a>:</p>
-<pre class="bash"><code>mkdir -p results/reports/DEXSeqReport/
-R -e &#39;rmarkdown::render(&quot;code/DEXSeq.Rmd&quot;, output_dir=&quot;results/reports/DEXSeqReport/&quot;)&#39;</code></pre>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/DEXSeq.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
 <p>Results:</p>
 <ul>
-<li><p><code>results/reports/DEXSeqReport/DEXSeq.html</code> - report describing the analysis.</p></li>
-<li><p><code>results/reports/DEXSeqReport/testForDEU.html</code> - DEXSeq results.</p></li>
+<li><p><code>results/reports/DEXSeq.html</code> - report describing the analysis.</p></li>
+<li><p><code>results/reports/DEXSeqReport.html</code> - DEXSeq results.</p></li>
 <li><p><code>results/reports/DEXSeqReport/files/*.svg</code> - figures that can be used in a publication.</p></li>
 <li><p><code>results/tables/DEXSeq/DEXSeq_results.csv</code> - results of the differential exon usage analysis.</p></li>
 <li><p><code>results/tables/DEXSeq/genelevel_FDR.csv</code> - gene-level FDR values.</p></li>

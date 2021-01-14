@@ -159,7 +159,7 @@ Results:
 
 - `results/reports/DEXSeq.html` - report describing the analysis.
 
-- `results/reports/DEXSeqReport/testForDEU.html` - DEXSeq results.
+- `results/reports/DEXSeqReport.html` - DEXSeq results.
 
 - `results/reports/DEXSeqReport/files/*.svg` - figures that can be used in a publication.
 

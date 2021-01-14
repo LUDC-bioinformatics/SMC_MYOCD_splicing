@@ -153,15 +153,14 @@ Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes
 
 
 ```bash
-mkdir -p results/reports/DEXSeqReport/
-R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/DEXSeqReport/")'
+R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/")'
 ```
 
 Results:
 
-- `results/reports/DEXSeqReport/DEXSeq.html` - report describing the analysis.
+- `results/reports/DEXSeq.html` - report describing the analysis.
 
-- `results/reports/DEXSeqReport/testForDEU.html` - DEXSeq results.
+- `results/reports/DEXSeqReport.html` - DEXSeq results.
 
 - `results/reports/DEXSeqReport/files/*.svg` - figures that can be used in a publication.
 
