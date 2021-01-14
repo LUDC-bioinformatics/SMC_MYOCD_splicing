@@ -15,8 +15,8 @@ rule all:
         'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
         'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
         'results/reports/multiQC/multiqc_report.html',
-        'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf',
-        expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES)
+        'intermediate/DEXSeq/DEXSeq_symbol.gtf',
+        # expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES)
 
 rule download_genome:
     output:
@@ -321,30 +321,54 @@ rule featureCounts_gz:
         '''
 
 rule dexseq_prepare_annotation:
-  input:
-        'data/reference/gencode.v35.primary_assembly.annotation.gtf.gz'
+    input:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
     output:
-        gtf = 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf',
-        log = 'logs/dexseq_count.log',
+        gtf = 'intermediate/DEXSeq/DEXSeq.gtf',
+        log = 'logs/dexseq_prepare_annotation.log',
     shell:
         '''
-        python ~/Programs/miniconda3/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_prepare_annotation.py \
-        {input.gtf} \
+        python ~/.conda/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_prepare_annotation.py \
+        {input} \
         {output.gtf} \
         &> {output.log}
         '''
 
-rule dexseq_count:
+rule id_symbol:
     input:
-        bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
-                     sample=SAMPLES),
-        gtf = 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf'
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
     output:
-        counts = 'results/tables/DEXSeq/{sample}.csv',
-        log = 'logs/dexseq_count.log',
+        'intermediate/DEXSeq/id_symbol.sh'
     shell:
         '''
-        python ~/Programs/miniconda3/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_count.py \
+        tail -n +6 {input} | \
+            sed 's/"//g;s/;//g' | \
+            awk '$3=="gene" {{printf "s/%s/%s_%s/g\\n", $10,$10,$14}}' | \
+            sed 's/THRA1\/BTR/THRA1\\\\\/BTR/g' \
+            > {output}
+        '''
+
+rule add_symbol_to_EnsemblIDs:
+    input:
+        sh = 'intermediate/DEXSeq/id_symbol.sh',
+        gtf = 'intermediate/DEXSeq/DEXSeq.gtf'
+    output:
+        'intermediate/DEXSeq/DEXSeq_symbol.gtf'
+    shell:
+        '''
+        sed -f {input.sh} {input.gtf} > {output}
+        '''
+
+rule dexseq_count:
+    input:
+        bam = 'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+        gtf = 'intermediate/DEXSeq/DEXSeq_symbol.gtf'
+    output:
+        counts = 'results/tables/DEXSeq/{sample}.csv',
+        log = 'logs/dexseq_count_{sample}.log'
+    shell:
+        '''
+        python ~/.conda/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_count.py \
         -p yes -r name -s reverse -f bam \
         {input.gtf} \
         {input.bam} \

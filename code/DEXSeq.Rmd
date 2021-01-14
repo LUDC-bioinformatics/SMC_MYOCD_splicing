@@ -28,30 +28,15 @@ library(data.table)
 
 ## Data
 
-Add gene names to the Ensembl IDs.
-
-```{bash, eval=FALSE}
-zcat data/reference/gencode.v35.primary_assembly.annotation.gtf.gz | \
-  tail -n +6 | \
-  sed 's/"//g;s/;//g' | \
-  awk '$3=="gene" {printf "s/%s/%s_%s/g;\n", $10,$10,$14}' \
-  sed 's/THRA1\/BTR/THRA1\\\/BTR/g' > id_symbol.sh
-snakemake -s code/symbol.smk -j 8 -p -n
-# sed is very slow here. It takes a day to run.
-# One can use `split -l` to split files, process and than merge.  
-head results/tables/DEXSeq/CMV1_symbol.csv
-```
-
 Load the counts:
 
 ```{r, message=FALSE}
-countFiles <- list.files('results/tables/DEXSeq/', pattern="*_symbol.csv",
+countFiles <- list.files('results/tables/DEXSeq', pattern="^CMV*|^MYO*",
                          full.names=TRUE)
 sampleTable <- data.frame(row.names = c("CMV1", "CMV2", "CMV4", "CMV5",
                                         "MYO1", "MYO2", "MYO4", "MYO5"),
                           condition = c(rep('control', 4), rep('treatment', 4)))
 flattenedFile <- 'intermediate/DEXSeq/DEXSeq_symbol.gtf'
-countFiles <- 
 dxd <- DEXSeqDataSetFromHTSeq(countFiles,
                               sampleData=sampleTable,
                               design= ~ sample + exon + condition:exon,
