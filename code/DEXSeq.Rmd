@@ -333,3 +333,14 @@ write.table(dxr_geneFDR,
 See https://github.com/vivekbhr/Subread_to_DEXSeq.
 
 It seems like there is no benefits of using featureCounts with DEXSeq.
+
+```{bash, include=FALSE}
+cd results/tables/DEXSeq/
+for i in DEXSeq_results*.csv;
+  do
+    soffice --headless \
+            --convert-to xlsx:"Calc MS Excel 2007 XML" \
+            --infilter="csv:9,34,UTF8" $i;
+  done
+cd -
+```
