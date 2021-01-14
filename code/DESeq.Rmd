@@ -374,7 +374,7 @@ ggplot(top_genes_norm) +
 ## Write results
 
 ```{r}
-filePath <- 'results/tables/diff_expression_genes/'
+filePath <- 'results/tables/DESeq/'
 dir.create(filePath, showWarnings = FALSE)
 # all results
 write.table(res_tpm_mean_annot,
@@ -391,7 +391,7 @@ write.table(res_tpm_mean_annot_interesting,
 ```
 
 ```{bash, include=FALSE}
-cd results/tables/diff_expression_genes/
+cd results/tables/DESeq/
 for i in DESeq_*.csv;
   do
     soffice --headless \
