@@ -1,4 +1,4 @@
-# conda list -e | grep -E "bioconductor-dexseq|htseq|pysam"
+# conda list -e | grep -E "bioconductor-dexseq|htseq|pysam|r-hwriter"
 # conda env update --file conf/conda.yml  --prune
 # conda env remove --name myocardin
 # conda env create -f conf/conda.yml
@@ -28,3 +28,4 @@ dependencies:
   - subread=2.0.1=hed695b0_0
   - bioconductor-dexseq=1.32.0=r36_0
   - htseq=0.13.5=py36h0234e80_0
+  - r-hwriter=1.3.2=r36h6115d3f_1003

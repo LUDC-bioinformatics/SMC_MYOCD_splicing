@@ -152,19 +152,21 @@ regardless of what sample you are looking at.)
 Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html):
 
 ```{bash}
-R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/")'
+mkdir -p results/reports/DEXSeqReport/
+R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/DEXSeqReport/")'
 ```
 
 Results:
 
-- `results/reports/DEXSeq.html` - report describing the analysis.
+- `results/reports/DEXSeqReport/DEXSeq.html` - report describing the analysis.
 
-- `results/tables/DEXSeq/DEXSeq_all.xlsx` - differential expression results.
+- `results/reports/DEXSeqReport/testForDEU.html` - DEXSeq results.
 
-- `results/tables/DESeq/DEXSeq_interesting.xlsx` - differential expression results
-  for provided list of potential candidate genes.
+- `results/reports/DEXSeqReport/files/*.svg` - figures that can be used in a publication.
 
-...
+- `results/tables/DEXSeq/DEXSeq_results.csv` - results of the differential exon usage analysis.
+
+- `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
 
 ```{bash, include=FALSE, eval=FALSE}
 rsync -rv --dry-run --progress -e 'ssh -p 22022' \

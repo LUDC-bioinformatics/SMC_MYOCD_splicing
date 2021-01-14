@@ -193,7 +193,7 @@ summary {
 <address class="author_afil">
 LUDC Bioinformatics Unit<br><a class="author_email" href="mailto:#"><a href="mailto:dmytro.kryvokhyzha@med.lu.se" class="email">dmytro.kryvokhyzha@med.lu.se</a></a>
 </address>
-<h4 class="date">04 december, 2020</h4>
+<h4 class="date">14 januari, 2021</h4>
 
 </div>
 
@@ -232,14 +232,12 @@ LUDC Bioinformatics Unit<br><a class="author_email" href="mailto:#"><a href="mai
 <pre class="bash"><code>conda env create -f conf/conda.yml
 conda activate myocardin</code></pre>
 </div>
-<div id="analysis" class="section level2">
-<h2>Analysis</h2>
-<div id="quality-control-qc" class="section level3">
-<h3>Quality Control (QC)</h3>
+<div id="quality-control-qc" class="section level2">
+<h2>Quality Control (QC)</h2>
 <p>Quality Control (QC) of the fastq files and other data are summarized in <code>results/reports/multiQC</code></p>
 </div>
-<div id="map-and-count-reads-at-exon-and-gene-level" class="section level3">
-<h3>Map and count reads at exon and gene level</h3>
+<div id="map-and-count-reads-at-exon-and-gene-level" class="section level2">
+<h2>Map and count reads at exon and gene level</h2>
 <ol style="list-style-type: decimal">
 <li><p>Map reads to the genome reference with <a href="https://github.com/alexdobin/STAR">STAR</a> in 2-pass mode.</p></li>
 <li><p>Count reads mapped to genes and exons with <a href="http://bioinf.wehi.edu.au/featureCounts/">featureCounts</a>.</p></li>
@@ -257,8 +255,8 @@ conda activate myocardin</code></pre>
 <li><code>results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts</code> - number of reads supporting each exon-exon junction.</li>
 </ul>
 </div>
-<div id="differential-gene-expression" class="section level3">
-<h3>Differential gene expression</h3>
+<div id="differential-gene-expression" class="section level2">
+<h2>Differential gene expression</h2>
 <p>Performed with <a href="https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html">DESeq2</a>:</p>
 <pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/DESeq.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
 <p>Results:</p>
@@ -282,10 +280,19 @@ conda activate myocardin</code></pre>
 <p>When you use TPM, the sum of all TPMs in each sample are the same. This makes it easier to compare the proportion of reads that mapped to a gene in each sample. In contrast, with RPKM and FPKM, the sum of the normalized reads in each sample may be different, and this makes it harder to compare samples directly.</p>
 <p>Here’s an example. If the TPM for gene A in Sample 1 is 3.33 and the TPM in sample B is 3.33, then I know that the exact same proportion of total reads mapped to gene A in both samples. This is because the sum of the TPMs in both samples always add up to the same number (so the denominator required to calculate the proportions is the same, regardless of what sample you are looking at.)</p>
 </div>
-<div id="splicing" class="section level3">
-<h3>Splicing</h3>
-<p>…</p>
-</div>
+<div id="differential-exon-usage" class="section level2">
+<h2>Differential exon usage</h2>
+<p>Performed with <a href="https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html">DEXSeq</a>:</p>
+<pre class="bash"><code>mkdir -p results/reports/DEXSeqReport/
+R -e &#39;rmarkdown::render(&quot;code/DEXSeq.Rmd&quot;, output_dir=&quot;results/reports/DEXSeqReport/&quot;)&#39;</code></pre>
+<p>Results:</p>
+<ul>
+<li><p><code>results/reports/DEXSeqReport/DEXSeq.html</code> - report describing the analysis.</p></li>
+<li><p><code>results/reports/DEXSeqReport/testForDEU.html</code> - DEXSeq results.</p></li>
+<li><p><code>results/reports/DEXSeqReport/files/*.svg</code> - figures that can be used in a publication.</p></li>
+<li><p><code>results/tables/DEXSeq/DEXSeq_results.csv</code> - results of the differential exon usage analysis.</p></li>
+<li><p><code>results/tables/DEXSeq/genelevel_FDR.csv</code> - gene-level FDR values.</p></li>
+</ul>
 </div>
 
 

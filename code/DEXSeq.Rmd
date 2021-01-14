@@ -7,7 +7,6 @@ author:
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:    
-    code_folding: show
     toc: true
 ---
     
@@ -21,84 +20,166 @@ knitr::opts_knit$set(root.dir = '../')
 ```{r, message=FALSE, eval=TRUE}
 library(DEXSeq)
 library(BiocParallel)
-# library(RColorBrewer)
-# library(ggplot2)
-# library(mygene)
-# library(sm)
-# library(reshape2)
+library(RColorBrewer)
+library(ggplot2)
+library(sm)
+library(data.table)
 ```
 
 ## Data
 
+Add gene names to the Ensembl IDs.
+
+```{bash, eval=FALSE}
+zcat data/reference/gencode.v35.primary_assembly.annotation.gtf.gz | \
+  tail -n +6 | \
+  sed 's/"//g;s/;//g' | \
+  awk '$3=="gene" {printf "s/%s/%s_%s/g;\n", $10,$10,$14}' \
+  sed 's/THRA1\/BTR/THRA1\\\/BTR/g' > id_symbol.sh
+snakemake -s code/symbol.smk -j 8 -p -n
+# sed is very slow here. It takes a day to run.
+# One can use `split -l` to split files, process and than merge.  
+head results/tables/DEXSeq/CMV1_symbol.csv
+```
+
 Load the counts:
 
-```{r}
-countFiles <- list.files('results/tables/DEXSeq/', full.names=TRUE)
+```{r, message=FALSE}
+countFiles <- list.files('results/tables/DEXSeq/', pattern="*_symbol.csv",
+                         full.names=TRUE)
 sampleTable <- data.frame(row.names = c("CMV1", "CMV2", "CMV4", "CMV5",
                                         "MYO1", "MYO2", "MYO4", "MYO5"),
                           condition = c(rep('control', 4), rep('treatment', 4)))
-flattenedFile <- 'intermediate/DEXSeq/gencode.v35.primary_assembly.annotation.DEXSeq.gtf'
+flattenedFile <- 'intermediate/DEXSeq/DEXSeq_symbol.gtf'
 countFiles <- 
 dxd <- DEXSeqDataSetFromHTSeq(countFiles,
                               sampleData=sampleTable,
                               design= ~ sample + exon + condition:exon,
                               flattenedfile=flattenedFile)
-colData(dxd)
+#colData(dxd)
 ```
 
-Subset data for development
-```{r}
+```{r, echo=FALSE, eval=FALSE}
+# Subset data for development
 dxd <- dxd[sample(nrow(dxd), 10000), ]
 ```
-
 
 Counts:
 
 ```{r}
-head(featureCounts(dxd), 5)
+knitr::kable(head(featureCounts(dxd)))
 ```
 
 Print the first 3 lines of the feature data annotation:
 
 ```{r}
-head(rowRanges(dxd), 3)
+knitr::kable(head(rowRanges(dxd), 3))
 ```
 
 Check the design:
 
 ```{r}
-sampleAnnotation(dxd)
+knitr::kable(sampleAnnotation(dxd))
 ```
 
-
-Exon counts are split into two categoris. 
+Exon counts are split into two categories. 
 The first 8 columns correspond to the number of reads mapping to 
 out exonic regions and the last 8 columns correspond to the sum of the counts 
 mapping to the rest of the exons from the same gene on each sample.
 
 ```{r}
-head(counts(dxd), 5 )
+head(counts(dxd))
 split(seq_len(ncol(dxd)), colData(dxd)$exon )
 ```
 
+## Library size & counts distribution
 
-## Normalisation & dispersion estimation
+This is rather **technical check** and **should not be used** in any interpretation.
+
+DEXSeq gives very high numbers because reads that touch multiple counting bins provide evidence for the presence of each of the bins, therefore they are counted for each of the bins. So, the evidence is not independent. The sum of bins counts is typically larger than the gene count.
+
+The dependence is not a problem since the testing in DEXSeq is marginal (bin by bin). Therefore 
+
+**Library size barplot & counts distribution boxplot**
+
+```{r, fig.height=7}
+colors2 <- brewer.pal(3, 'Accent')[c(1,2)]
+condition_color <- c(rep(colors2[1], 4),rep(colors2[2], 4))
+par(mfcol=c(2,1))
+# Library size
+read_counts <- featureCounts(dxd)
+libsize <- colSums(read_counts)/1000000
+barplot(libsize,
+        ylim = c(0,80),
+        names.arg=names(read_counts),
+        col= condition_color,
+        ylab = 'Million reads',
+        main = 'Library size',
+        las =2)
+abline(h=median(libsize), lty=2)
+# counts distribution b oxplot
+logCPM <- log2((read_counts+1)/colSums(read_counts+1)*1e+06)
+boxplot(logCPM,
+        xlab='',
+        ylab='log2(CPM)',
+        notch	=T,
+        col = condition_color,
+        outline=FALSE,
+        main = 'Counts distribution',
+        las=2)
+abline(h=median(as.matrix(logCPM)), lty=2, col='lightgrey')
+```
+
+**Samples density plot**
+
+```{r}
+condition <- c(rep('control', 4), rep('treatment', 4))
+logCPM_dens <- data.frame(logCPM=as.vector(t(logCPM)),
+                          samples=rep(colnames(logCPM), dim(logCPM)[1]),
+                          condition=rep(condition, dim(logCPM)[1]))
+# samples density plot
+sm.density.compare(logCPM_dens$logCPM,
+                   logCPM_dens$samples,
+                   xlab='Log2 counts per million')
+title(main='Samples counts distribution')
+colfill<-c(2:(2+length(levels(logCPM_dens$samples)))) 
+legend('topright',
+       levels(logCPM_dens$samples),
+       col=colfill,
+       lty=c(1:length(logCPM_dens$samples)),
+       lwd=1,
+       ncol=2,
+       cex=0.7)
+```
+
+Condition density plot
+
+```{r}
+ggplot(logCPM_dens, aes(x = logCPM, colour = condition)) +
+  geom_density(alpha = 0.5, size = 1.5) + theme_bw() +
+  theme(legend.position = 'top') + xlab(expression(log[2](count + 1)))
+```
+
+
+## Normalization & dispersion estimation
 
 The same method as in DESeq2:
 
 ```{r}
-ncores <- MultiCoreParam(6)
-dxd <- estimateSizeFactors(dxd, BPPARAM=ncores)
+ncores <- MulticoreParam(6)
+dxd <- estimateSizeFactors(dxd)
 dxd <- estimateDispersions(dxd, BPPARAM=ncores)
 ```
 
-Plot disprrssion:
+Plot dispersion:
 
 ```{r}
 plotDispEsts(dxd)
 ```
 
 ## Differential exon usage
+
+### GLM
 
 *DEXSeq* fits a generalized linear model with the formula 
 `~ sample + exon + condition:exon` and compare it to the null model) `~ sample + exon`.
@@ -108,14 +189,15 @@ We test whether the fraction of the genes reads that fall onto the exon under th
 differs significantly between the experimental conditions.
 
 ```{r}
-ncores <- MulticoreParam(6)
-dxr <- DEXSeq(dxd, BPPARAM=ncores)
+dxd <- testForDEU(dxd)
+dxd <- estimateExonFoldChanges(dxd)
 ```
 
-Results:
+### Results
 
 ```{r}
-head(dxr, 5)
+dxr <- DEXSeqResults(dxd)
+knitr::kable(head(dxr))
 ```
 
 Description of each column:
@@ -124,11 +206,19 @@ Description of each column:
 mcols(dxr)$description
 ```
 
+### Exon level
+
 How many exonic exons are significant with a false discovery rate of 1%?
 
 ```{r}
 sum(dxr$padj < 0.01, na.rm = T)
 ```
+
+```{r}
+plotMA(dxr, cex=1)
+```
+
+### Gene level
 
 How many genes are affected?
 
@@ -136,34 +226,125 @@ How many genes are affected?
 sum(tapply(dxr$padj < 0.01, dxr$groupID, any), na.rm = T)
 ```
 
+DEXSeq returns one p-value for each exonic region.
+However, sometimes it is informative to know what is the FDR at the gene level,
+i.e. knowing the number of genes with at least one differentially used exon
+while keeping control of FDR.
+
 ```{r}
-plotMA(dxr, cex=1)
+dxr_geneFDR <- perGeneQValue(dxr)
+dxr_geneFDR <- as.data.frame(dxr_geneFDR[order(dxr_geneFDR)])
+colnames(dxr_geneFDR) <- 'gene_level_FDR'
+sum(dxr_geneFDR$gene_level_FDR < 0.01)
 ```
 
-## Visualization
+### Visualization
+
+Test with **MYOCD**.
 
 ```{r}
 head(dxr[order(dxr$padj),'groupID'])
 ```
 
 ```{r}
-plotDEXSeq(dxr, "ENSG00000065534.19",
-           legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+plotDEXSeq(dxr, 'ENSG00000141052.18_MYOCD',
+           displayTranscripts=TRUE,
+           splicing=TRUE,
+           legend=TRUE,
+           cex.axis=1.2, cex=1.3, lwd=2 )
 ```
 
-## FDR at the gene level
+## Positive control genes
 
-DEXSeq returns one p-value for each exonic region.
-However, sometimes it is informative to know what is the FDR at the gene level,
-i.e. knowing the numer of genes with at least one differentially used exon
-while keeping control of FDR.
+*MYH11*, *MCAM* and *SYNM* can be used to verify that *MYOCD* over-expression worked
+
+There are also much less responsive target genes: *RRAS*, *RBPMS*, and *RBPMS2*.
+  
+We also have qPCR information in *MYH11, MCAM, KCNMB1*. 
+
+Differentially splicing of the following genes is of interest:
+*ACTN1, SMTN, NFIC, BICD2, TEAD1, TPM1, TPM2, PDLIM7, FHL1, CSR2,
+TGFB11, PKD1, MYL6, PDLIM5, FLNA, MBNL1, ZFR, FNBP1, SORBS1, PIP5K1C,
+TNRC18, SVIL, KLHL42, LARGE1, MICAL3*
 
 ```{r}
-numbOfGenes <- sum( perGeneQValue(dxr) < 0.01)
-numbOfGenes
+interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
+                       'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
+                       'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5',
+                       'FLNA', 'MBNL1', 'ZFR', 'FNBP1', 'SORBS1', 'PIP5K1C',
+                       'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
 ```
+
+Extract the results for these genes: 
+
+```{r}
+interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), dxr$groupID)
+dxr_interesting_genes <- dxr[interesting_genes_rows,]
+knitr::kable(head(dxr_interesting_genes))
+```
+
+How many genes are significant?
+
+FDR< 0.01
+```{r}
+sum(tapply(dxr_interesting_genes$padj < 0.01, dxr_interesting_genes$groupID, any), na.rm = T)
+```
+
+FDR< 0.05
+
+```{r}
+sum(tapply(dxr_interesting_genes$padj < 0.05, dxr_interesting_genes$groupID, any), na.rm = T)
+```
+
+What are those genes?
+
+```{r}
+unique(dxr_interesting_genes[which(dxr_interesting_genes$padj < 0.05), 'groupID'])
+```
+
+## Write Results
+
+### HTML Report
+
+The results for of FDR<0.05 are exported to an HTML report:
+
+```{r}
+filePath <- 'results/reports/DEXSeqReport/'
+dir.create(filePath, showWarnings = FALSE)
+
+DEXSeqHTML(dxr, FDR=0.05, color=colors2,
+           path=filePath,
+           file='DEXSeq_results.html',
+           BPPARAM=ncores)
+```
+
+### Exons
+
+```{r}
+write.table(dxr,'results/tables/DEXSeq/DEXSeq_results.csv',
+            row.names = F, sep = '\t')
+```
+
+### Gene-level FDR
+
+Write the gene-level FDR values to a file:
+
+```{r}
+write.table(dxr_geneFDR,
+            'results/tables/DEXSeq/DEXSeq_results_geneFDR.csv',
+            row.names = T, sep = '\t')
+```
+
+- Report: `results/reports/DEXSeqReport/testForDEU.html`.
+
+- Figures that can be used in a publication: `results/reports/DEXSeqReport/files/*.svg`
+
+- Results of the differential exon usage analysis: `results/tables/DEXSeq/DEXSeq_results.csv`
+
+- Gene-level FDR values: `results/tables/DEXSeq/DEXSeq_results_geneFDR.csv`
 
 ## Preprocessing using featureCounts
 
-See https://github.com/vivekbhr/Subread_to_DEXSeq. It seems like there is no benefits
-of using featureCounts with DEXSeq.
+See https://github.com/vivekbhr/Subread_to_DEXSeq.
+
+It seems like there is no benefits of using featureCounts with DEXSeq.

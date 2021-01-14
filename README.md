@@ -4,7 +4,7 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "04 december, 2020"
+date: "14 januari, 2021"
 output:
   html_document:
     keep_md: true
@@ -70,14 +70,12 @@ conda env create -f conf/conda.yml
 conda activate myocardin
 ```
 
-## Analysis
-
-### Quality Control (QC)
+## Quality Control (QC)
 
 Quality Control (QC) of the fastq files and other data are summarized in
 `results/reports/multiQC`
 
-### Map and count reads at exon and gene level
+## Map and count reads at exon and gene level
 
 1. Map reads to the genome reference with [STAR](https://github.com/alexdobin/STAR) 
 in 2-pass mode.
@@ -101,7 +99,7 @@ Results:
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.gz` - exon counts data.
 - `results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts` - number of reads supporting each exon-exon junction.
 
-### Differential gene expression
+## Differential gene expression
 
 Performed with [DESeq2](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html):
 
@@ -149,8 +147,26 @@ denominator required to calculate the proportions is the same,
 regardless of what sample you are looking at.)
 
 
-### Splicing
+## Differential exon usage
 
-...
+Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html):
+
+
+```bash
+mkdir -p results/reports/DEXSeqReport/
+R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/DEXSeqReport/")'
+```
+
+Results:
+
+- `results/reports/DEXSeqReport/DEXSeq.html` - report describing the analysis.
+
+- `results/reports/DEXSeqReport/testForDEU.html` - DEXSeq results.
+
+- `results/reports/DEXSeqReport/files/*.svg` - figures that can be used in a publication.
+
+- `results/tables/DEXSeq/DEXSeq_results.csv` - results of the differential exon usage analysis.
+
+- `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
 
 
