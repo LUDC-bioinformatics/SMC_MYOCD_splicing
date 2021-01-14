@@ -232,7 +232,7 @@ res_mean_tpm_val$Row.names <- NULL
 res_tpm_mean <- merge(res_mean_tpm_val, dds_tpm, by=0, all.x = T)
 rownames(res_tpm_mean) <- res_tpm_mean$Row.names
 res_tpm_mean$Row.names <- NULL
-# head(res_tpm_mean)
+    # head(res_tpm_mean)
 ```
 
 Retrieve the annotation information (takes a while):
@@ -241,7 +241,7 @@ Retrieve the annotation information (takes a while):
 gene_renamed <- gsub("\\..*","", rownames(res_tpm_mean))
 annotAll <- queryMany(unique(gene_renamed),
                       scopes='ensembl.gene',
-                      fields='symbol,name,summary', # pathway.kegg.id,go
+                      fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
                       return.as='DataFrame',
                       species='human',
                       returnall=FALSE)
@@ -251,8 +251,9 @@ annotAll <- merge(annotAll, gene2renamed, by='query')
 # remove duplicated and not found rows:
 duplNoSumNoFound <- which(duplicated(annotAll$query))
 annot <- as.data.frame(annotAll[-duplNoSumNoFound,
-                                c('gene', 'query', 'symbol', 'name', 'summary')])
+                                c('gene', 'query', 'entrezgene', 'symbol', 'name', 'summary')])
 rownames(annot) <- annot$gene
+colnames(annot)[3] <- 'entrez'
 #head(annot, 2)
 ```
 
@@ -264,7 +265,7 @@ res_tpm_mean_annot$Row.names <- NULL
 res_tpm_mean_annot$query <- NULL
 front_columns <- c('gene', 'baseMean','log2FoldChange', 'lfcSE', 'stat','pvalue','padj',
                    'control_tpm', 'treatment_tpm',
-                   'symbol', 'name', 'summary')
+                   'entrez', 'symbol', 'name', 'summary')
 back_columns <-  colnames(res_tpm_mean_annot)[which(!(colnames(res_tpm_mean_annot) %in% front_columns))]
 res_tpm_mean_annot <- res_tpm_mean_annot[,c(front_columns, back_columns)]
 # order by padj
@@ -370,6 +371,59 @@ ggplot(top_genes_norm) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     theme(plot.title=element_text(hjust=0.5))
 ```
+
+### Highly expressed genes
+
+Genes that fall into the right part of this distribution represent top 10% of genes.
+So, TPM values above 25 can be considered highly expressed.
+
+```{r}
+tmp_mean <- res_tpm_mean_annot[,c('control_tpm', 'treatment_tpm')]
+tmp_mean_dens <- data.frame(tmp_mean=as.vector(t(tmp_mean)),
+                          condition=rep(condition, dim(tmp_mean)[1]))
+top10per <- quantile(as.matrix(tmp_mean), 0.90)
+ggplot(tmp_mean_dens, aes(x = tmp_mean, colour = condition)) +
+  geom_density(alpha = 0.5, size = 1.5) + theme_bw() + xlim(0, 200) +
+  theme(legend.position = 'top') + xlab(expression(log[2](count + 1))) +
+  geom_vline(xintercept = top10per, linetype="dotted", color = "blue", size=1)
+```
+
+```{r}
+res_tpm_mean_annot_interesting[(res_tpm_mean_annot_interesting$treatment_tpm > top10per |
+                                res_tpm_mean_annot_interesting$control_tpm > top10per),
+                               col_interesting]
+```
+
+### RBPMS and RBPMS2 expression
+
+Coordinates:
+
+```
+chr8  30384511 30572256 RBPMS ENSG00000157110.16
+chr15 64739891 64775589 RBPMS2 ENSG00000166831.9
+```
+
+DE results:
+
+```{r}
+res_tpm_mean_annot_interesting[res_tpm_mean_annot_interesting$symbol %in% c('RBPMS','RBPMS2'),
+                               c("symbol", "log2FoldChange", "padj", "control_tpm","treatment_tpm",
+                                "name", "CMV1_tpm","CMV2_tpm","CMV4_tpm","CMV5_tpm",
+                                "MYO1_tpm","MYO2_tpm","MYO4_tpm","MYO5_tpm")]
+```
+
+Raw counts:
+
+```{r}
+read_counts[c('ENSG00000157110.16', 'ENSG00000166831.9'),]
+```
+
+IGV:
+
+![](results/figures/RBPMS.png)
+
+![](results/figures/RBPMS2.png)
+
 
 ## Write results
 
