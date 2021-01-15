@@ -24,6 +24,7 @@ library(RColorBrewer)
 library(ggplot2)
 library(sm)
 library(data.table)
+library(gridExtra)
 ```
 
 ## Data
@@ -239,7 +240,7 @@ plotDEXSeq(dxr, 'ENSG00000141052.18_MYOCD',
            cex.axis=1.2, cex=1.3, lwd=2 )
 ```
 
-## Positive control genes
+## Control genes
 
 *MYH11*, *MCAM* and *SYNM* can be used to verify that *MYOCD* over-expression worked
 
@@ -270,12 +271,13 @@ knitr::kable(head(dxr_interesting_genes))
 
 How many genes are significant?
 
-FDR< 0.01
+FDR < 0.01
+
 ```{r}
 sum(tapply(dxr_interesting_genes$padj < 0.01, dxr_interesting_genes$groupID, any), na.rm = T)
 ```
 
-FDR< 0.05
+FDR < 0.05
 
 ```{r}
 sum(tapply(dxr_interesting_genes$padj < 0.05, dxr_interesting_genes$groupID, any), na.rm = T)
@@ -285,6 +287,78 @@ What are those genes?
 
 ```{r}
 unique(dxr_interesting_genes[which(dxr_interesting_genes$padj < 0.05), 'groupID'])
+```
+
+## Select cadidates
+
+Look at top percentiles
+
+```{r}
+colors5 <- brewer.pal(5, 'Accent')
+topPerc <- c(0.05, 0.01, 0.001, 0.0001)
+topPerc_log2FC <- quantile(dxr$log2fold_treatment_control, 1-topPerc/2, na.rm=T)
+topPerc_expr <- quantile(c(dxr$treatment, dxr$control), 1-topPerc, na.rm=T)
+round(topPerc_log2FC, 0)
+round(topPerc_expr, 0)
+```
+
+Plot each stats and define tails to cut-off thresholds:
+
+```{r}
+pdf('results/figures/padj_logFC_expr.pdf', width = 8, height = 5)
+ggplot(as.data.frame(dxr), aes(x=padj)) +
+      geom_density() + theme_bw() +
+      geom_vline(xintercept = topPerc[1], alpha=0.5, color = colors5[1], size=1) +
+      geom_vline(xintercept = topPerc[2], alpha=0.5, color = "blue", size=1) +
+      geom_vline(xintercept = topPerc[3], alpha=0.5, color = colors5[3], size=1) +
+      geom_vline(xintercept = topPerc[4], alpha=0.5, color = colors5[4], size=1)
+ggplot(as.data.frame(dxr), aes(x=log2fold_treatment_control)) +
+      geom_density() + theme_bw() +
+      geom_vline(xintercept = topPerc_log2FC[1], alpha=0.5, color = colors5[1], size=1) +
+      geom_vline(xintercept = topPerc_log2FC[2], alpha=0.5, color = colors5[2], size=1) +
+      geom_vline(xintercept = topPerc_log2FC[3], alpha=0.5, color = colors5[3], size=1) +
+      geom_vline(xintercept = topPerc_log2FC[4], alpha=0.5, color = colors5[4], size=1) +
+      geom_vline(xintercept = -topPerc_log2FC[1], alpha=0.5, color = colors5[1], size=1) +
+      geom_vline(xintercept = -topPerc_log2FC[2], alpha=0.5, color = colors5[2], size=1) +
+      geom_vline(xintercept = -topPerc_log2FC[3], alpha=0.5, color = colors5[3], size=1) +
+      geom_vline(xintercept = -topPerc_log2FC[4], alpha=0.5, color = colors5[4], size=1) +
+      geom_vline(xintercept = 1, color = "blue", alpha=0.5, size=1) +
+      geom_vline(xintercept = -1, color = "blue", alpha=0.5, size=1)
+expr <- melt(as.matrix(dxr[, c('treatment','control')]))
+colnames(expr)[c(2,3)] <- c('condition', 'expression')
+ggplot(expr, aes(x=expression)) +
+      geom_density() + theme_bw() +
+      geom_vline(xintercept = topPerc_expr[1], alpha=0.5, color = colors5[1], size=1) +
+      geom_vline(xintercept = topPerc_expr[2], alpha=0.5, color = colors5[2], size=1) +
+      geom_vline(xintercept = topPerc_expr[3], alpha=0.5, color = colors5[3], size=1) +
+      geom_vline(xintercept = topPerc_expr[4], alpha=0.5, color = colors5[4], size=1) +
+      geom_vline(xintercept = 10, color = "blue", alpha=0.5, size=1)
+dev.off()
+```
+
+Filter:
+
+```{r}
+threshold_padj <- 0.01
+threshold_log2FC <- 1
+threshold_expr <- 10
+# I also filter for gene level FDR
+
+dxr_top <- as.data.frame(dxr)
+dxr_top <- dxr_top[which(dxr_top$padj < threshold_padj &
+                  c(dxr_top$log2fold_treatment_control < -threshold_log2FC |
+                    dxr_top$log2fold_treatment_control > threshold_log2FC)   & 
+                  c(dxr_top$control > threshold_expr | dxr_top$treatment > threshold_expr) &
+                    dxr_top$groupID %in% rownames(dxr_geneFDR)),]
+length(unique(dxr_top$groupID))
+```
+
+Check how many of the candidate genes are in this list:
+
+```{r}
+dxr_top_candidates_rows <- grep(paste(interesting_genes,collapse="|"), dxr_top$groupID)
+dxr_top_candidates <- dxr_top[dxr_top_candidates_rows,]
+unique(dxr_top_candidates$groupID)
 ```
 
 ## Write Results
@@ -307,6 +381,8 @@ DEXSeqHTML(dxr, FDR=0.05, color=colors2,
 
 ```{r}
 write.table(dxr,'results/tables/DEXSeq/DEXSeq_results.csv',
+            row.names = F, sep = '\t')
+write.table(dxr_top,'results/tables/DEXSeq/DEXSeq_results_top_candidates.csv',
             row.names = F, sep = '\t')
 ```
 
