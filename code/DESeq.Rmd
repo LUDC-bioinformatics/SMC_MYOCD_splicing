@@ -232,7 +232,7 @@ res_mean_tpm_val$Row.names <- NULL
 res_tpm_mean <- merge(res_mean_tpm_val, dds_tpm, by=0, all.x = T)
 rownames(res_tpm_mean) <- res_tpm_mean$Row.names
 res_tpm_mean$Row.names <- NULL
-    # head(res_tpm_mean)
+# head(res_tpm_mean)
 ```
 
 Retrieve the annotation information (takes a while):

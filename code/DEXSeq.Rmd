@@ -404,6 +404,29 @@ write.table(dxr_geneFDR,
 
 - Gene-level FDR values: `results/tables/DEXSeq/DEXSeq_results_geneFDR.csv`
 
+### IGV input
+
+```{r}
+igv_all <- as.data.frame(dxr[,c('genomicData', 'log2fold_treatment_control',
+                                'treatment', 'control', 'padj')])
+igv_all$genomicData.width <- NULL
+igv_all$genomicData.strand <- NULL
+colnames(igv_all)[c(1:4)] <- c('CHR', 'START', 'END', 'log2FC')
+igv_all$ID <- row.names(igv_all)
+
+igv <- igv_all[,c('CHR', 'START', 'END', 'ID', 'log2FC', 'treatment', 'control', 'padj')]
+igv <- igv[!is.na(igv$log2FC),]
+igv$`-log(padj)` <- -log(igv$padj)
+igv$padj <- NULL
+igv <- igv[order(igv$CHR, igv$START),]
+write.table(igv,
+            'intermediate/IGV/DEXSeq_results_IGV.igv',
+            row.names = F,
+            sep = '\t',
+            quote = F)
+```
+
+
 ## Preprocessing using featureCounts
 
 See https://github.com/vivekbhr/Subread_to_DEXSeq.
