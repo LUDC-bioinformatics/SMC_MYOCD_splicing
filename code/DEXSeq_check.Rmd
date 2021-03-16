@@ -1,0 +1,210 @@
+---
+title: "Myocardin splicing: differential exon usage analysis"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:    
+    toc: true
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+
+```
+
+## Data
+
+Load the counts:
+
+```{r}
+dexons <- read.table('results/tables/DEXSeq/DEXSeq_results.csv',
+                header = T, sep = '\t')
+dgenes <- read.table('results/tables/DESeq/DESeq_all.csv',
+                header = T, sep = '\t')
+head(dexons, 2)
+head(dgenes, 2)
+```
+
+Splicing targets genes:
+
+```{r}
+interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
+                       'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
+                       'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5',
+                       'FLNA', 'MBNL1', 'ZFR', 'FNBP1', 'SORBS1', 'PIP5K1C',
+                       'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
+```
+
+Select only exon expression columns:
+
+```{r}
+interesting_genes_row <- grep(paste(interesting_genes, collapse = "|"), dexons$groupID)
+exons_CMV <- dexons[interesting_genes_row, grep('CMV', colnames(dexons))]
+exons_MYO <- dexons[interesting_genes_row,grep('MYO', colnames(dexons))]
+exons_rows <- paste(dexons$groupID, dexons$featureID, sep = "_")
+rownames(exons_CMV) <- exons_rows[interesting_genes_row]
+rownames(exons_MYO) <- exons_rows[interesting_genes_row]
+```
+
+Select gene expression of MYOCD, RBPMS, MBNL1:
+
+```{r}
+MYOCD_CMV <- t(dgenes[which(dgenes$symbol=="MYOCD"), grep('CMV', colnames(dgenes))])
+RBPMS_CMV <- t(dgenes[which(dgenes$symbol=="RBPMS"), grep('CMV', colnames(dgenes))])
+MBNL1_CMV <- t(dgenes[which(dgenes$symbol=="MBNL1"), grep('CMV', colnames(dgenes))])
+
+MYOCD_MYO <- t(dgenes[which(dgenes$symbol=="MYOCD"), grep('MYO', colnames(dgenes))])
+RBPMS_MYO <- t(dgenes[which(dgenes$symbol=="RBPMS"), grep('MYO', colnames(dgenes))])
+MBNL1_MYO <- t(dgenes[which(dgenes$symbol=="MBNL1"), grep('MYO', colnames(dgenes))])
+```
+
+## Correlations
+
+```{r, warning=FALSE, message=FALSE}
+exons_gene_cor <- matrix(NA, ncol = 18, nrow = dim(exons_CMV)[1])
+rownames(exons_gene_cor) <- exons_rows[interesting_genes_row]
+colnames(exons_gene_cor) <- c(paste('MYOCD_CMV', c('rho', 'p.value', 'padj'), sep = "_"),
+                              paste('RBPMS_CMV', c('rho', 'p.value', 'padj'), sep = "_"),
+                              paste('MBNL1_CMV', c('rho', 'p.value', 'padj'), sep = "_"),
+                              paste('MYOCD_MYO', c('rho', 'p.value', 'padj'), sep = "_"),
+                              paste('RBPMS_MYO', c('rho', 'p.value', 'padj'), sep = "_"),
+                              paste('MBNL1_MYO', c('rho', 'p.value', 'padj'), sep = "_"))
+for (condition in c('CMV', 'MYO')){
+   for (gene in c('MYOCD', 'RBPMS', 'MBNL1')){
+      # gene <- 'MBNL1'
+      # condition <- 'CMV'
+      gene_condition <- paste(gene, condition, sep ="_")
+      d <- get(gene_condition)
+      exons_d <- get(paste('exons', condition,  sep ="_"))
+      
+      colwrite <- grep(gene_condition, colnames(exons_gene_cor))
+      
+      for (i in c(1:dim(exons_d)[1])){
+         # i <- 1
+         cor_res <- cor.test(as.numeric(d), as.numeric(exons_d[i,]),
+                             method = 'spearman')
+         exons_gene_cor[i,colwrite[1]] <- cor_res$estimate
+         exons_gene_cor[i,colwrite[2]] <- cor_res$p.value
+      }
+      exons_gene_cor[,colwrite[3]] <- p.adjust(exons_gene_cor[,colwrite[2]],
+                                               method ='fdr')
+   }
+}
+exons_gene_cor <- as.data.frame(exons_gene_cor)
+```
+
+## Check the results
+
+MYOCD
+
+```{r}
+exons_gene_cor[grep('MYOCD', rownames(exons_gene_cor)),
+               grep('MYOCD', colnames(exons_gene_cor))]
+```
+
+RBPMS
+
+```{r}
+exons_gene_cor[grep('RBPMS', rownames(exons_gene_cor)),
+               grep('RBPMS', colnames(exons_gene_cor))]
+```
+
+MBNL1
+
+```{r}
+exons_gene_cor[grep('MBNL1', rownames(exons_gene_cor)),
+               grep('MBNL1', colnames(exons_gene_cor))]
+```
+
+Exclude MYOCD, RBPMS, MBNL1:
+
+```{r}
+exons_gene_cor_excl <- exons_gene_cor[-grep('MYOCD|RBPMS|MBNL1', rownames(exons_gene_cor)),]
+dim(exons_gene_cor)
+dim(exons_gene_cor_excl)
+```
+
+p.value:
+
+```{r}
+pcuttoff <- 0.05
+sum(exons_gene_cor_excl$MYOCD_CMV_p.value <= pcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MYOCD_MYO_p.value <= pcuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$RBPMS_CMV_p.value <= pcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$RBPMS_MYO_p.value <= pcuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$MBNL1_CMV_p.value <= pcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MBNL1_MYO_p.value <= pcuttoff, na.rm = T)
+```
+
+FDR
+
+```{r}
+fdrcuttoff <- 0.1
+sum(exons_gene_cor_excl$MYOCD_CMV_padj <= fdrcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MYOCD_MYO_padj <= fdrcuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$RBPMS_CMV_padj <= fdrcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$RBPMS_MYO_padj <= fdrcuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$MBNL1_CMV_padj <= fdrcuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MBNL1_MYO_padj <= fdrcuttoff, na.rm = T)
+```
+
+rho:
+
+```{r}
+rhocuttoff <- 0.99
+sum(exons_gene_cor_excl$MYOCD_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$MYOCD_CMV_rho <= -rhocuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MYOCD_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$MYOCD_MYO_rho <= -rhocuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$RBPMS_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$RBPMS_CMV_rho <= -rhocuttoff, na.rm = T)
+sum(exons_gene_cor_excl$RBPMS_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$RBPMS_MYO_rho <= -rhocuttoff, na.rm = T)
+
+sum(exons_gene_cor_excl$MBNL1_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$MBNL1_CMV_rho <= -rhocuttoff, na.rm = T)
+sum(exons_gene_cor_excl$MBNL1_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$MBNL1_MYO_rho <= -rhocuttoff, na.rm = T)
+```
+
+rho and p.value:
+
+```{r}
+rhocuttoff <- 0.999
+pcuttoff <- 0.1
+
+sum((exons_gene_cor_excl$MYOCD_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$MYOCD_CMV_rho <= -rhocuttoff) &
+    exons_gene_cor_excl$MYOCD_CMV_p.value <= pcuttoff, na.rm = T)
+sum((exons_gene_cor_excl$MYOCD_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$MYOCD_MYO_rho <= -rhocuttoff) &
+    exons_gene_cor_excl$MYOCD_MYO_p.value <= pcuttoff, na.rm = T)
+
+sum((exons_gene_cor_excl$RBPMS_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$RBPMS_CMV_rho <= -rhocuttoff) &
+    exons_gene_cor_excl$RBPMS_CMV_p.value <= pcuttoff, na.rm = T)
+sum((exons_gene_cor_excl$RBPMS_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$RBPMS_MYO_rho <= -rhocuttoff) &
+    exons_gene_cor_excl$RBPMS_MYO_p.value <= pcuttoff, na.rm = T)
+
+sum((exons_gene_cor_excl$MBNL1_CMV_rho >= rhocuttoff |
+    exons_gene_cor_excl$MBNL1_CMV_rho <= -rhocuttoff) &
+    exons_gene_cor_excl$MBNL1_CMV_p.value <= pcuttoff, na.rm = T)
+sum((exons_gene_cor_excl$MBNL1_MYO_rho >= rhocuttoff |
+    exons_gene_cor_excl$MBNL1_MYO_rho <= -rhocuttoff) & 
+    exons_gene_cor_excl$MBNL1_MYO_p.value <= pcuttoff, na.rm = T)
+```
