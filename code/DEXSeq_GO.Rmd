@@ -1,0 +1,224 @@
+---
+title: "DNA-Seq Dogs diet adaptation analysis: enrichment anaylsis of exon the DEXSeq results"
+author: "Dmytro Kryvokhyzha"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, eval = TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependencies
+
+```{r, message=FALSE}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+```
+
+
+## Data
+
+Get avregae exon logFC for each gene:
+
+```{bash, eval=FALSE}
+mkdir -p intermediate/GO/
+python code/DEXSeq_to_GOinput.py \
+  -i results/tables/DEXSeq/DEXSeq_results.csv \
+  -c log2fold_treatment_control \
+  -o intermediate/GO/DEXSeq_GOinput.csv
+python code/DEXSeq_to_GOinput.py \
+  -i results/tables/DEXSeq/DEXSeq_results_geneFDR.csv \
+  -c gene_level_FDR \
+  -o intermediate/GO/geneFDR_GOinput.csv
+```
+
+Load the data:
+
+```{r}
+geneFDR <- read.table('intermediate/GO/geneFDR_GOinput.csv', sep = "\t", header = T)
+d <- read.table('intermediate/GO/DEXSeq_GOinput.csv', sep = "\t", header = T)
+head(d, 2)
+```
+
+Get entrez IDs:
+
+```{r}
+d$gene <- gsub("\\..*","", d$gene)
+ids <- bitr(d$gene, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb=org.Hs.eg.db)
+dedup_ids <- ids[!duplicated(ids["ENSEMBL"]),]
+d2 <- d[d$gene %in% dedup_ids$ENSEMBL,]
+d2$entrez <- dedup_ids$ENTREZID
+head(c)
+```
+
+Crete logFC lists:
+
+```{r}
+# entrez
+log2FC_entrez <- d2$mean_log2fold_treatment_control
+names(log2FC_entrez) <- d2$entrez
+log2FC_entrez <- sort(log2FC_entrez, decreasing = T)
+head(log2FC_entrez)
+
+# ensembl
+log2FC_ensembl <- d$mean_log2fold_treatment_control
+names(log2FC_ensembl) <- d$gene
+log2FC_ensembl <- sort(log2FC_ensembl, decreasing = T)
+head(log2FC_ensembl)
+```
+
+Merge logFC and p-values
+
+```{r}
+geneFDR$gene <- gsub("\\..*", "", geneFDR$gene)
+dgene <- merge(d2, geneFDR, by='gene')
+head(dgene)
+```
+
+
+## GSE
+
+```{r}
+nPerm <- 10000
+minGSSize <- 10
+maxGSSize <- 1000
+```
+
+### KEGG
+
+```{r}
+KEGGgse <- gseKEGG(log2FC_entrez,
+                   organism = 'hsa',
+                   nPerm = nPerm,
+                   minGSSize = minGSSize,
+                   maxGSSize = maxGSSize, 
+                   pvalueCutoff = 0.1,
+                   verbose = FALSE)
+KEGGgse <- setReadable(KEGGgse, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+KEGGgse[order(KEGGgse$NES, decreasing = T),c('Description', 'NES')]
+```
+
+```{r, warning=FALSE}
+dotplot(KEGGgse, showCategory=30)
+```
+
+```{r}
+emapplot(KEGGgse, showCategory = 100)
+```
+
+```{r}
+cnetplot(KEGGgse, categorySize="pvalue",
+         foldChange=log2FC_entrez,
+         showCategory = 10)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+gseaplot(KEGGgse, by = "all", title = KEGGgse$Description[8], geneSetID = 1)
+```
+
+### GO
+
+```{r}
+GOres <- gseGO(log2FC_ensembl,
+               ont = "ALL",
+               keyType='ENSEMBL',
+               nPerm = nPerm,
+               minGSSize = minGSSize,
+               maxGSSize = maxGSSize,
+               pAdjustMethod = 'fdr',
+               pvalueCutoff = 0.1,
+               verbose = FALSE,
+               OrgDb = org.Hs.eg.db)
+GOres <- setReadable(GOres, OrgDb = org.Hs.eg.db, keyType="ENSEMBL")
+GOres[order(GOres$NES, decreasing = T),c('Description', 'NES')]
+```
+
+## Over-representation
+
+Create significant only lists
+
+```{r}
+cutoff <- 0.01
+DEgene <- gsub("\\..*","", dgene$gene[which(dgene$mean_gene_level_FDR <= cutoff)])
+Allgene <- gsub("\\..*","", dgene$gene)
+
+DEentrez <- dgene$entrez[which(!is.na(dgene$entrez) & dgene$mean_gene_level_FDR <= cutoff)]
+Allentrez <- dgene$entrez[!is.na(dgene$entrez)]
+
+length(DEgene)
+length(Allgene)
+length(DEentrez)
+length(Allentrez)
+```
+
+### KEGG
+
+```{r}
+KEGGenrich <- enrichKEGG(DEentrez,
+                        qvalueCutoff = 0.1,
+                        minGSSize = minGSSize,
+                        maxGSSize = maxGSSize,
+                        universe=Allentrez,
+                        organism='hsa')
+KEGGenrich <- setReadable(KEGGenrich, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+KEGGenrich[order(KEGGenrich$p.adjust),c('Description', 'p.adjust')]
+```
+
+### KEGG Module
+
+```{r}
+KEGGenrich_km <- enrichMKEGG(DEentrez,
+                            universe=Allentrez,
+                            qvalueCutoff = 0.1,
+                            minGSSize = minGSSize,
+                            maxGSSize = maxGSSize,
+                            organism = 'hsa')
+KEGGenrich_km[order(KEGGenrich_km$p.adjust),c('Description', 'p.adjust')]
+```
+
+### GO
+
+```{r}
+GOenrich <- enrichGO(DEgene,
+                     ont = "ALL",
+                     qvalueCutoff = 0.1,
+                     keyType = "ENSEMBL",
+                     minGSSize = minGSSize,
+                     maxGSSize = maxGSSize,
+                     universe=Allgene,
+                     OrgDb = org.Hs.eg.db)
+GOenrich <- setReadable(GOenrich, OrgDb = org.Hs.eg.db, keyType="ENSEMBL")
+GOenrich[order(GOenrich$p.adjust),c('Description', 'p.adjust')]
+```
+
+## Save
+
+Save results
+
+```{r, eval = FALSE}
+dir.create("results/tables/GO/DEXSeq/", showWarnings=F)
+
+for (f in c('KEGGenrich', 'GOenrich', 'KEGGgse')){
+  res <- as.data.frame(get(f))
+  write.table(res,
+              paste("results/tables/GO/DEXSeq/", f, ".csv",
+                    sep = ""),
+              row.names = F,
+              sep = "\t")
+}
+```
+
+```{bash, include=FALSE, eval = FALSE}
+cd results/tables/GO/DEXSeq/
+for i in *.csv;
+  do
+    soffice --headless \
+            --convert-to xlsx:"Calc MS Excel 2007 XML" \
+            --infilter="csv:9,34,UTF8" $i;
+  done
+cd -
+```
