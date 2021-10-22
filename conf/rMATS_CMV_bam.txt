@@ -1,0 +1,2 @@
+intermediate/STAR/CMV1_pass2/CMV1.Aligned.out.bam,intermediate/STAR/CMV2_pass2/CMV2.Aligned.out.bam,intermediate/STAR/CMV4_pass2/CMV4.Aligned.out.bam,intermediate/STAR/CMV5_pass2/CMV5.Aligned.out.bam
+ 

@@ -1,0 +1,2 @@
+intermediate/STAR/MYO1_pass2/MYO1.Aligned.out.bam,intermediate/STAR/MYO2_pass2/MYO2.Aligned.out.bam,intermediate/STAR/MYO4_pass2/MYO4.Aligned.out.bam,intermediate/STAR/MYO5_pass2/MYO5.Aligned.out.bam
+ 

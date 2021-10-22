@@ -17,3 +17,15 @@ STAR_pass2:
 qualimap:
   cores: 12
   ram: 64Gb
+
+rMATS_bam:
+  cores: 12
+  ram: 16Gb
+
+rMATS_fq:
+  cores: 12
+  ram: 64Gb
+
+sort_bam:
+  cores: 12
+  ram: 32Gb

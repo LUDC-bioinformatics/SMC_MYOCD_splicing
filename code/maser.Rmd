@@ -1,0 +1,195 @@
+---
+title: "Myocardin splicing: alternative splicing with rMATS"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:    
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '/home/dmytro/Science/myocardin_splicing_Ola_Karl/')
+```
+
+This notebook visualizes the differential alternative splicing events detected with 
+[rMATS](http://rnaseq-mats.sourceforge.net/).
+
+## Splicing types
+
+**SE** - *Exon skipping*. The most common type of splicing event involves a
+         cassette exon that is either expressed or skipped. The PSI track displays
+         the inclusion level for the cassette exon (a.k.a. alternative exon).
+
+**A3SS**, **A5SS** - *Alternative 5' and 3' exons*. - Alternative 5' splicing occur
+         due to alternative donor sites, while altenative 3' is caused by change
+         in the acceptor sites. Practically, these splicing events will lead to
+         expression of longer or shorter exons. The PSI track indicates inclusion
+         levels for the longest exon. 
+
+**RI** - *Intron retention*. A type of splice event that are usually associated
+         to decreased protein translation. The PSI track refers to the inclusion
+         level of the retained intron.
+
+**MXE** - *Mutually exclusive exons*. Adjacent exons that are mutually exclusive,
+         i.e. are not expressed together. The PSI track in the mutually exclusive
+         exons event wil show two sets of boxplots: Exon 1 PSI levels and Exon 2 PSI
+         levels in the two conditions.
+         
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(maser)
+library(rtracklayer)
+```
+
+## Data
+
+GTF:
+
+```{r}
+gtf <- rtracklayer::import.gff('data/reference/gencode.v35.annotation.gtf.gz')
+```
+
+Splicing:
+
+```{r, message=FALSE}
+d <- maser('results/tables/rMATS/', c("CMV", "MYO"), ftype = "JC")
+d
+```
+
+Check:
+
+```{r}
+knitr::kable(head(summary(d, type = "SE")))
+```
+
+## Global plot
+
+Plots ordered as A3SS, A5SS, SE, RI, MXE.
+
+```{r}
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+for (i in Jtype){
+   print(volcano(d, type = i))
+}
+```
+
+## Top events
+
+Select significant events (FDR=0.05) with minimum change of 10% (`deltaPSI = 0.1`)
+and average coverage of the splice event by 3 reads:
+
+```{r}
+# check counts distribution
+hist(rowMeans(counts(d)), breaks = 10000, xlim = c(1,30),
+     main = "", xlab = "counts")
+abline(v=2, col= 'red', lwd=3)
+
+# keep only events that are coverage by at least 3 reads on average.
+d <- filterByCoverage(d, avg_reads = 3)
+
+dtop <- topEvents(d, fdr = 0.05, deltaPSI = 0.1)
+```
+
+### Summary
+
+```{r}
+dtop
+```
+
+### Plots
+
+Extract gene IDs:
+
+```{r}
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+for (i in Jtype){
+   #i <- "SE"
+   dsumm <- summary(dtop, type = i)
+   assign(paste('dtop', i, sep = ""), dsumm)
+}
+```
+
+Save these results to PDFs
+
+```{bash, include=FALSE, echo=FALSE, eval= FALSE}
+rm -r results/figures/rMATS_sign/
+rm -r results/tables/rMATS_sign/
+```
+
+```{r}
+figPath <- 'results/figures/rMATS_sign/'
+dir.create(figPath, showWarnings = F)
+for (i in Jtype){
+   #i <- "SE"
+   dd <- get(paste('dtop', i, sep = ""))
+   topGenes <- unique(dd$geneSymbol)
+   # topGenes <- c( 'TPM1','ACTN1','MCAM','SVIL','SORBS1')
+   for (g in topGenes){
+   #g <- "TPM1"
+      pdf(paste(figPath, g, "_", i, ".pdf", sep = ""), width = 20, height = 7)
+         geneD <- geneEvents(dtop, geneS = g)
+         gPSI <- plotGenePSI(geneD, type = i, show_replicates = TRUE)
+         tryCatch({
+            print(gPSI)
+            for (j in unique(gPSI$data$ID)){
+               plotTranscripts(geneD, type = i, event_id = j, gtf = gtf)
+            }
+         },
+         error=function(e){print("no event")})
+      dev.off()
+   }
+}
+```
+
+### Tables
+
+```{r}
+tablePath <- 'results/tables/rMATS_sign/'
+dir.create(tablePath, showWarnings = F)
+for (i in Jtype){
+   #i <- "SE"
+   sdtop <- summary(dtop, type = i)
+   write.table(sdtop[order(sdtop$FDR),], paste(tablePath, 'rMATS_sign_', i,'.csv', sep = ""),
+               row.names = F, sep = '\t', quote = F)
+}
+```
+
+## Interesting genes
+
+Which of the interesting genes have alternative splicing:
+
+```{r}
+interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
+                       'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
+                       'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5',
+                       'FLNA', 'MBNL1', 'ZFR', 'FNBP1', 'SORBS1', 'PIP5K1C',
+                       'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
+dtop_interesting_genes <- c()
+for (i in Jtype){
+   topSE <- summary(dtop, type = i)
+   interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), topSE$geneSymbol)
+   topSE_interesting_genes <- topSE[interesting_genes_rows,]
+   dtop_interesting_genes <- unique(c(dtop_interesting_genes, topSE_interesting_genes$geneSymbol))
+}
+dtop_interesting_genes
+```
+
+Summary:
+
+```{r}
+TPM1 <- geneEvents(d, geneS = "TPM1")
+ACTN1 <- geneEvents(d, geneS = "ACTN1")
+MCAM <- geneEvents(d, geneS = "MCAM")
+SVIL <- geneEvents(d, geneS = "SVIL")
+SORBS1 <- geneEvents(d, geneS = "SORBS1")
+TPM1
+ACTN1
+MCAM
+SVIL
+SORBS1
+```

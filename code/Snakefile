@@ -17,7 +17,9 @@ rule all:
         'results/reports/multiQC/multiqc_report.html',
         'intermediate/DEXSeq/DEXSeq_symbol.gtf',
         expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES),
-        # 'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
+        #'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
+        'results/tables/rMATS/',
+        expand('results/figures/rMATS_rmats2sashimiplot_{Jtype}', Jtype=['SE','A5SS','A3SS','MXE','RI']),
 
 rule download_genome:
     output:
@@ -40,6 +42,20 @@ rule download_genome_GTF:
         "logs/wget_genome_GTF_fasta.log"
     params:
         url = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_35/gencode.v35.primary_assembly.annotation.gtf.gz'
+    shell:
+        '''
+        export ftp_proxy=http://192.168.100.1:80
+        wget -v -o {log} -P data/reference {params.url}
+        gunzip {output}.gz
+        '''
+
+rule download_genome_GFF3:
+    output:
+        'data/reference/gencode.v35.primary_assembly.annotation.gff3'
+    log:
+        "logs/wget_genome_GTF_fasta.log"
+    params:
+        url = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_35/gencode.v35.primary_assembly.annotation.gff3.gz'
     shell:
         '''
         export ftp_proxy=http://192.168.100.1:80
@@ -372,4 +388,83 @@ rule dexseq_count:
             {input.bam} \
             {output.counts} \
             &> {output.log}
+        '''
+
+rule rMATS:
+    input:
+        bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+              sample=SAMPLES),
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf',
+        b1 = 'conf/rMATS_CMV_bam.txt',
+        b2 = 'conf/rMATS_MYO_bam.txt'
+    output:
+        out = directory('results/tables/rMATS/'),
+        tmp = temp(directory("intermediate/rMATS")),
+        log = 'logs/rMATS.log'
+    threads:
+        CORES
+    shell:
+        '''
+        rmats.py \
+            --b1 {input.b1} \
+            --b2 {input.b2} \
+            --gtf {input.gtf} \
+            -t paired \
+            --libType fr-firststrand \
+            --allow-clipping \
+            --readLength 73 \
+            --nthread {threads} \
+            --od {output.out} \
+            --tmp {output.tmp} \
+            &> {output.log}
+        '''
+
+rule sort_bam:
+    input:
+        bam = 'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam'
+    output:
+        bam = 'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam',
+        bai = 'intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam.bai'
+    threads:
+        CORES
+    shell:
+        '''
+        samtools sort -@ {threads} -o {output.bam} {input.bam}
+        samtools index -@ {threads} {output.bam}
+        '''
+
+# rmats2sashimiplot gives no-crucial errors and fails in Snakemake (non-zero exit error).
+# Use condor direct submission: rmats2sashimiplot.condorjob rmats2sashimiplot.sh
+rule rmats2sashimiplot:
+    input:
+        CMV = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam',
+              sample=['CMV1','CMV2','CMV4','CMV5']),
+        MYO = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam',
+              sample=['MYO1','MYO2','MYO4','MYO5']),
+        bai = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam.bai',
+              sample=SAMPLES),
+        gff3 = 'data/reference/gencode.v35.primary_assembly.annotation.gff3',
+        res = 'results/tables/rMATS/SE.MATS.JC.txt',
+        gf = 'conf/grouping.gf'
+    params:
+        CMV = lambda wildcards, input: ','.join(input.CMV),
+        MYO = lambda wildcards, input: ','.join(input.CMV),
+        Jtype = '{Jtype}'
+    output:
+        tmp = directory('intermediate/rmats2sashimiplot/{Jtype}'),
+        out = directory('results/figures/rmats2sashimiplot/{Jtype}'),
+        log = 'logs/rmats2sashimiplot/{Jtype}.log'
+    shell:
+        '''
+        rmats2sashimiplot \
+            --b1 {params.CMV}
+            --b2 {params.MYO}
+            -t {params.Jtype} \
+            -e {input.res} \
+            --l1 CMV \
+            --l2 MYO \
+            -o {output.out} \
+            --group-info {input.gf} \
+            &> {output.log}
+        mv {output.tmp}/Sashimi_plot {output.out};
         '''

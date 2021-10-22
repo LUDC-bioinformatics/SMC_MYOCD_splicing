@@ -1,0 +1,14 @@
+Universe = vanilla 
+Executable = /usr/bin/bash
+Arguments = code/rmats2sashimiplot.sh 
+Output =    condor.$(Cluster).$(Process).out
+Log =    condor.$(Cluster).$(Process).log
+Error =  condor.$(Cluster).$(Process).error
+request_cpus = 1
+#request_memory = 
+#concurrency_limits = 
+notify_user =  dmytro.kryvokhyzha@med.lu.se
+notification = error
+RunAsOwner=True
+getenv = True
+queue 1

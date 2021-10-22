@@ -193,7 +193,7 @@ summary {
 <address class="author_afil">
 LUDC Bioinformatics Unit<br><a class="author_email" href="mailto:#"><a href="mailto:dmytro.kryvokhyzha@med.lu.se" class="email">dmytro.kryvokhyzha@med.lu.se</a></a>
 </address>
-<h4 class="date">14 januari, 2021</h4>
+<h4 class="date">22 oktober, 2021</h4>
 
 </div>
 
@@ -280,18 +280,78 @@ conda activate myocardin</code></pre>
 <p>When you use TPM, the sum of all TPMs in each sample are the same. This makes it easier to compare the proportion of reads that mapped to a gene in each sample. In contrast, with RPKM and FPKM, the sum of the normalized reads in each sample may be different, and this makes it harder to compare samples directly.</p>
 <p>Here’s an example. If the TPM for gene A in Sample 1 is 3.33 and the TPM in sample B is 3.33, then I know that the exact same proportion of total reads mapped to gene A in both samples. This is because the sum of the TPMs in both samples always add up to the same number (so the denominator required to calculate the proportions is the same, regardless of what sample you are looking at.)</p>
 </div>
-<div id="differential-exon-usage" class="section level2">
-<h2>Differential exon usage</h2>
+<div id="splicing-analyses" class="section level2">
+<h2>Splicing analyses</h2>
+<div id="differential-exon-usage" class="section level3">
+<h3>Differential exon usage</h3>
 <p>Performed with <a href="https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html">DEXSeq</a>:</p>
 <pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/DEXSeq.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
 <p>Results:</p>
 <ul>
 <li><p><code>results/reports/DEXSeq.html</code> - report describing the analysis.</p></li>
-<li><p><code>results/reports/DEXSeqReport.html</code> - DEXSeq results.</p></li>
+<li><p><code>results/reports/DEXSeqReport/DEXSeq_results.html</code> - DEXSeq results.</p></li>
 <li><p><code>results/reports/DEXSeqReport/files/*.svg</code> - figures that can be used in a publication.</p></li>
 <li><p><code>results/tables/DEXSeq/DEXSeq_results.csv</code> - results of the differential exon usage analysis.</p></li>
 <li><p><code>results/tables/DEXSeq/genelevel_FDR.csv</code> - gene-level FDR values.</p></li>
 </ul>
+<p>Enrichment</p>
+<p>Performed with <a href="https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html">clusterProfiler</a>:</p>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/DEXSeq_GO.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
+<p>Results:</p>
+<ul>
+<li><p><code>results/reports/DEXSeq_GO.html</code> - report describing the analysis and figures.</p></li>
+<li><p><code>results/tables/GO/DEXSeq/</code> - tables.</p></li>
+</ul>
+</div>
+<div id="splicing-events-analysis" class="section level3">
+<h3>Splicing events analysis</h3>
+<p>Performed with <a href="http://rnaseq-mats.sourceforge.net/">rMATS</a>.</p>
+<p>The code is added to <code>code/Snakefile</code>.</p>
+<p>To visualize the results I used two programs: <a href="https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Introduction.html">maser</a> and <a href="https://github.com/Xinglab/rmats2sashimiplot/">rmats2sashimiplot</a></p>
+<div id="maser" class="section level4">
+<h4>maser</h4>
+<p>Select only significant events (FDR=0.05) with minimum change of 10% and average coverage of the splice event by 3 reads.</p>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/maser.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
+<p>Results:</p>
+<ul>
+<li><p><code>results/figures/rMATS_sign/</code> - plots.</p></li>
+<li><p><code>results/tables/rMATS_sign/</code> - tables.</p></li>
+</ul>
+<p>Maybe <a href="https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Protein_mapping.html">add pritens info</a> to selected candidates.</p>
+</div>
+<div id="rmats2sashimiplot" class="section level4">
+<h4>rmats2sashimiplot</h4>
+<p>First, I extracted the signficant events only:</p>
+<pre class="bash"><code>for i in SE A5SS A3SS RI;
+   do
+      awk -F&#39;\t&#39; &#39;NR==1 || $20&lt;=0.05&#39; results/tables/rMATS_bam/${i}.MATS.JC.txt \
+         &gt; results/tables/rMATS_bam/${i}.MATS.JC.sign.txt;
+   done
+
+awk -F&#39;\t&#39; &#39;NR==1 || $22&lt;=0.05&#39; results/tables/rMATS_bam/MXE.MATS.JC.txt \
+   &gt; results/tables/rMATS_bam/MXE.MATS.JC.sign.txt</code></pre>
+<p>Then, plotted them with:</p>
+<pre class="bash"><code>for i in SE A5SS A3SS MXE RI;
+  do
+    rmats2sashimiplot \
+      --b1 intermediate/STAR/CMV1_pass2/CMV1.Aligned.out.sorted.bam,intermediate/STAR/CMV2_pass2/CMV2.Aligned.out.sorted.bam,intermediate/STAR/CMV4_pass2/CMV4.Aligned.out.sorted.bam,intermediate/STAR/CMV5_pass2/CMV5.Aligned.out.sorted.bam \
+      --b2 intermediate/STAR/MYO1_pass2/MYO1.Aligned.out.sorted.bam,intermediate/STAR/MYO2_pass2/MYO2.Aligned.out.sorted.bam,intermediate/STAR/MYO4_pass2/MYO4.Aligned.out.sorted.bam,intermediate/STAR/MYO5_pass2/MYO5.Aligned.out.sorted.bam \
+      -t $i \
+      -e results/tables/rMATS_bam/${i}.MATS.JC.sign.txt \
+      --l1 CMV \
+      --l2 MYO \
+      -o intermediate/rmats2sashimiplot/rmats2sashimiplot_${i} \
+      --group-info conf/grouping.gf
+      mv intermediate/rmats2sashimiplot/${i}/Sashimi_plot results/figures/rmats2sashimiplot/${i};
+  done</code></pre>
+<p>I added this code to <code>code/Snakefile</code>, but it gives non-crucial errors and fails in Snakemake (non-zero exit error). I had to submit a condor job directly with <code>code/rmats2sashimiplot.condorjob</code> and <code>code/rmats2sashimiplot.sh</code>:</p>
+<pre class="bash"><code>condor_submit code/rmats2sashimiplot.condorjob</code></pre>
+<p>Results:</p>
+<ul>
+<li><code>results/figures/rmats2sashimiplot/</code> - plots for all rMATS significant events.</li>
+</ul>
+</div>
+</div>
 </div>
 
 

@@ -4,7 +4,7 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "14 januari, 2021"
+date: "22 oktober, 2021"
 output:
   html_document:
     keep_md: true
@@ -146,8 +146,9 @@ the TPMs in both samples always add up to the same number (so the
 denominator required to calculate the proportions is the same, 
 regardless of what sample you are looking at.)
 
+## Splicing analyses
 
-## Differential exon usage
+### Differential exon usage
 
 Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes/DEXSeq/inst/doc/DEXSeq.html):
 
@@ -160,12 +161,106 @@ Results:
 
 - `results/reports/DEXSeq.html` - report describing the analysis.
 
-- `results/reports/DEXSeqReport.html` - DEXSeq results.
+- `results/reports/DEXSeqReport/DEXSeq_results.html` - DEXSeq results.
 
 - `results/reports/DEXSeqReport/files/*.svg` - figures that can be used in a publication.
 
 - `results/tables/DEXSeq/DEXSeq_results.csv` - results of the differential exon usage analysis.
 
 - `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
+
+Enrichment
+
+Performed with [clusterProfiler](https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html):
+
+
+```bash
+R -e 'rmarkdown::render("code/DEXSeq_GO.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+- `results/reports/DEXSeq_GO.html` - report describing the analysis and figures.
+
+- `results/tables/GO/DEXSeq/` - tables.
+
+### Splicing events analysis
+
+Performed with [rMATS](http://rnaseq-mats.sourceforge.net/).
+
+The code is added to `code/Snakefile`.
+
+To visualize the results I used two programs:
+[maser](https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Introduction.html)
+and
+[rmats2sashimiplot](https://github.com/Xinglab/rmats2sashimiplot/)
+
+#### maser
+
+Select only significant events (FDR=0.05) with minimum change of 10% and average
+coverage of the splice event by 3 reads.
+
+
+```bash
+R -e 'rmarkdown::render("code/maser.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+- `results/figures/rMATS_sign/` - plots.
+
+- `results/tables/rMATS_sign/` - tables.
+
+
+Maybe [add pritens info](https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Protein_mapping.html) to selected candidates.
+
+#### rmats2sashimiplot
+
+First, I extracted the signficant events only:
+
+
+```bash
+for i in SE A5SS A3SS RI;
+   do
+      awk -F'\t' 'NR==1 || $20<=0.05' results/tables/rMATS_bam/${i}.MATS.JC.txt \
+         > results/tables/rMATS_bam/${i}.MATS.JC.sign.txt;
+   done
+
+awk -F'\t' 'NR==1 || $22<=0.05' results/tables/rMATS_bam/MXE.MATS.JC.txt \
+   > results/tables/rMATS_bam/MXE.MATS.JC.sign.txt
+```
+
+Then, plotted them with:
+
+
+```bash
+for i in SE A5SS A3SS MXE RI;
+  do
+    rmats2sashimiplot \
+      --b1 intermediate/STAR/CMV1_pass2/CMV1.Aligned.out.sorted.bam,intermediate/STAR/CMV2_pass2/CMV2.Aligned.out.sorted.bam,intermediate/STAR/CMV4_pass2/CMV4.Aligned.out.sorted.bam,intermediate/STAR/CMV5_pass2/CMV5.Aligned.out.sorted.bam \
+      --b2 intermediate/STAR/MYO1_pass2/MYO1.Aligned.out.sorted.bam,intermediate/STAR/MYO2_pass2/MYO2.Aligned.out.sorted.bam,intermediate/STAR/MYO4_pass2/MYO4.Aligned.out.sorted.bam,intermediate/STAR/MYO5_pass2/MYO5.Aligned.out.sorted.bam \
+      -t $i \
+      -e results/tables/rMATS_bam/${i}.MATS.JC.sign.txt \
+      --l1 CMV \
+      --l2 MYO \
+      -o intermediate/rmats2sashimiplot/rmats2sashimiplot_${i} \
+      --group-info conf/grouping.gf
+      mv intermediate/rmats2sashimiplot/${i}/Sashimi_plot results/figures/rmats2sashimiplot/${i};
+  done
+```
+
+I added this code to `code/Snakefile`, but it gives non-crucial errors and fails in Snakemake (non-zero exit error). I had to submit a condor job directly with
+`code/rmats2sashimiplot.condorjob` and `code/rmats2sashimiplot.sh`:
+
+
+```bash
+condor_submit code/rmats2sashimiplot.condorjob
+```
+
+Results:
+
+- `results/figures/rmats2sashimiplot/` - plots for all rMATS significant events.
+
+
 
 
