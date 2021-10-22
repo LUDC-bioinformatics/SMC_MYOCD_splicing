@@ -22,7 +22,7 @@ library(org.Hs.eg.db)
 
 ## Data
 
-Get avregae exon logFC for each gene:
+Get average exon logFC for each gene:
 
 ```{bash, eval=FALSE}
 mkdir -p intermediate/GO/

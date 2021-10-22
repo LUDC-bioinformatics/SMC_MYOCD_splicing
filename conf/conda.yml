@@ -1,4 +1,4 @@
-# conda list -e | grep -E "bioconductor-deseq2|bioconductor-mygene|r-ggplot2|r-knitr|r-pheatmap|r-rcolorbrewer|r-rmarkdown|r-reshape2|r-sm|multiqc|snakemake-minimal|star|qualimap|subread|bioconductor-dexseq|htseq|r-hwriter|bioconductor-clusterprofiler|bioconductor-org.hs.eg.db|bioconductor-maser|rmats2sashimiplot"
+# conda list -e | grep -E "bioconductor-deseq2|bioconductor-mygene|r-ggplot2|r-knitr|r-pheatmap|r-rcolorbrewer|r-rmarkdown|r-reshape2|r-sm|multiqc|snakemake-minimal|star|qualimap|subread|bioconductor-dexseq|htseq|r-hwriter|bioconductor-clusterprofiler|bioconductor-org.hs.eg.db|bioconductor-maser|rmats2sashimiplot|r-venndiagram"
 # conda env update --file conf/conda.yml  --prune
 # conda env remove --name myocardin
 # conda env create -f conf/conda.yml
@@ -33,3 +33,4 @@ dependencies:
   - bioconductor-org.hs.eg.db=3.10.0=r36_0
   - bioconductor-maser=1.4.0=r36_0
   - rmats2sashimiplot=2.0.4=py36h09cc20e_2
+  - r-venndiagram=1.6.20=r36h6115d3f_1002

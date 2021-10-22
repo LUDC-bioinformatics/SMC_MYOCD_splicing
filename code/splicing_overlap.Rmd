@@ -1,0 +1,104 @@
+---
+title: "Myocardin splicing: overlap between methods"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+``` 
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(VennDiagram)
+library(RColorBrewer)
+library(mygene)
+```
+
+## Data
+
+DEXSeq
+
+```{r}
+dexseqAll <- read.table('results/tables/DEXSeq/DEXSeq_results_geneFDR.csv',
+                        sep = "\t", header = T, stringsAsFactors=F)
+dexseqSign <- dexseqAll$gene[which(dexseqAll$gene_level_FDR < 0.01)]
+dexseq <- unique(grep('ENSG', unlist(strsplit(dexseqSign, "[_]|[+]")), value	= T))
+length(dexseq)
+```
+
+rMATS
+
+```{r}
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+rmats <- c()
+for (i in Jtype){
+   #i <- "SE"
+   d <- read.table(paste('results/tables/rMATS_sign/rMATS_sign_', i, '.csv', sep = ""),
+                   header = T, sep = "\t", stringsAsFactors=F)
+   rmats <- unique(c(rmats, d$GeneID))
+   
+   # to include unfiltered rMATS results
+   # d <- read.table(paste('results/tables/rMATS/', i, '.MATS.JC.sign.txt', sep = ""),
+   #                 header = T, sep = "\t", stringsAsFactors=F)
+   # dsign <- d$GeneID[d$FDR<0.1]
+   # rmats <- unique(c(rmats, dsign))
+}
+length(rmats)
+```
+
+## Overlap
+
+```{r, fig.width=15, fig.height=7}
+vennPlot <- venn.diagram(list(rmats, dexseq),
+                         NULL,
+                         fill = brewer.pal(3, 'Accent')[c(1,3)],
+                         category.names = c('rMATS', 'DEXSeq'))
+grid.draw(vennPlot)
+```
+
+```{bash clean_logs, include=FALSE}
+rm VennDiagram*.log
+```
+
+What proportion is it?
+
+```{r}
+overlapGenes <- intersect(rmats, dexseq)
+length(overlapGenes)/length(rmats)
+```
+
+## Write results
+
+Annotate the overlap genes
+
+```{r, message=FALSE, error=FALSE, eval=TRUE}
+gene_renamed <- gsub("\\..*","", overlapGenes)
+annotAll <- queryMany(unique(gene_renamed),
+                      scopes='ensembl.gene',
+                      fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+overlap_annot <- as.data.frame(annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(overlap_annot)[c(1,2)] <- c('gene', 'entrez')
+```
+
+
+Save the overlap
+
+```{r}
+write.table(overlap_annot,
+            'results/tables/rMATS_DEXSeq_overlap_genes.csv',
+            quote = T,
+            row.names = F,
+            sep = '\t')
+```
