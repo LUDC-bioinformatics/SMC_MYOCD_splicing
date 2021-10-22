@@ -16,7 +16,8 @@ rule all:
         'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
         'results/reports/multiQC/multiqc_report.html',
         'intermediate/DEXSeq/DEXSeq_symbol.gtf',
-        # expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES)
+        expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES),
+        # 'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
 
 rule download_genome:
     output:
@@ -215,14 +216,11 @@ rule featureCounts_exon:
         CORES
     shell:
         '''
-        featureCounts \
+	featureCounts \
             -T {threads} \
-            -p \
-            -t exon \
-            -g exon_id \
-            -J \
-            -s 2 \
+            -p -f -C -O \
             -G {input.fa} \
+            -g exon_id \
             -a {input.gtf} \
             -o {output.counts} \
             {input.bam} \
@@ -369,9 +367,9 @@ rule dexseq_count:
     shell:
         '''
         python ~/.conda/envs/myocardin/lib/R/library/DEXSeq/python_scripts/dexseq_count.py \
-        -p yes -r name -s reverse -f bam \
-        {input.gtf} \
-        {input.bam} \
-        {output.counts} \
-        &> {output.log}
+            -p yes -r name -s reverse -f bam \
+            {input.gtf} \
+            {input.bam} \
+            {output.counts} \
+            &> {output.log}
         '''
