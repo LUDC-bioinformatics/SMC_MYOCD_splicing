@@ -80,6 +80,12 @@ for (i in Jtype){
 
 ## Top events
 
+Significant non-filtered:
+
+```{r}
+topEvents(d, fdr = 0.05, deltaPSI = 0.1)
+```
+
 Select significant events (FDR=0.05) with minimum change of 10% (`deltaPSI = 0.1`)
 and average coverage of the splice event by 3 reads:
 
@@ -90,9 +96,9 @@ hist(rowMeans(counts(d)), breaks = 10000, xlim = c(1,30),
 abline(v=2, col= 'red', lwd=3)
 
 # keep only events that are coverage by at least 3 reads on average.
-d <- filterByCoverage(d, avg_reads = 3)
+dfilter <- filterByCoverage(d, avg_reads = 3)
 
-dtop <- topEvents(d, fdr = 0.05, deltaPSI = 0.1)
+dtop <- topEvents(dfilter, fdr = 0.05, deltaPSI = 0.1)
 ```
 
 ### Summary
@@ -117,12 +123,12 @@ for (i in Jtype){
 Save these results to PDFs
 
 ```{bash, include=FALSE, echo=FALSE, eval= FALSE}
-rm -r results/figures/rMATS_sign/
-rm -r results/tables/rMATS_sign/
+rm -r results/figures/rMATS/
+rm -r results/tables/rMATS/
 ```
 
 ```{r}
-figPath <- 'results/figures/rMATS_sign/'
+figPath <- 'results/figures/rMATS/'
 dir.create(figPath, showWarnings = F)
 for (i in Jtype){
    #i <- "SE"
@@ -149,12 +155,15 @@ for (i in Jtype){
 ### Tables
 
 ```{r}
-tablePath <- 'results/tables/rMATS_sign/'
+tablePath <- 'results/tables/rMATS/'
 dir.create(tablePath, showWarnings = F)
 for (i in Jtype){
    #i <- "SE"
    sdtop <- summary(dtop, type = i)
    write.table(sdtop[order(sdtop$FDR),], paste(tablePath, 'rMATS_sign_', i,'.csv', sep = ""),
+               row.names = F, sep = '\t', quote = F)
+   sd <- summary(d, type = i)
+   write.table(sd[order(sd$FDR),], paste(tablePath, 'rMATS_all_', i,'.csv', sep = ""),
                row.names = F, sep = '\t', quote = F)
 }
 ```

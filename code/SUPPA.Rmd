@@ -1,0 +1,166 @@
+---
+title: "Myocardin splicing: process SUPPA results"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+``` 
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(RColorBrewer)
+library(mygene)
+library(ggplot2)
+library(reshape2)
+```
+
+## Data
+
+Load:
+
+```{r}
+dpsi <- read.table('intermediate/suppa/salmon_TPM_isoform.dpsi',
+                    col.names = c('id', 'psi', 'p.value'), row.names = 1,
+                    sep = "\t", header = T, stringsAsFactors=F)
+cmv <- read.table('intermediate/suppa/salmon_TPM_CMV_isoform.psi',
+                  sep = "\t", header = T, stringsAsFactors=F, row.names = 1)
+myo <- read.table('intermediate/suppa/salmon_TPM_MYO_isoform.psi',
+                    sep = "\t", header = T, stringsAsFactors=F, row.names = 1)
+```
+
+Split the id column into gene and transcript:
+
+```{r}
+dpsi_id <- data.frame(do.call('rbind', strsplit(rownames(dpsi),';', fixed=TRUE)))
+colnames(dpsi_id) <- c('gene', 'transcript')
+dpsi <- cbind(dpsi_id, dpsi)
+```
+
+Merge all:
+
+```{r}
+cmv_myo <- merge(cmv, myo, by=0)
+rownames(cmv_myo) <- cmv_myo$Row.names
+cmv_myo$Row.names <- NULL
+d <- merge(dpsi, cmv_myo, by=0)
+rownames(d) <- d$Row.names
+d$Row.names <- NULL
+head(d)
+```
+
+Add gene symbols:
+
+```{r, message=FALSE, error=FALSE}
+gene_renamed <- gsub("\\..*","", d$gene)
+annotAll <- queryMany(unique(gene_renamed),
+                      scopes='ensembl.gene',
+                      fields='symbol',
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+# add full gene names
+gene2renamed <- data.frame(gene=d$gene, query=gene_renamed)
+annotAll_genes <- merge(gene2renamed, as.data.frame(annotAll[,c("query", "symbol")]),
+                        by='query', all.x=T)
+annotAll_genes <- annotAll_genes[which(!duplicated(annotAll_genes)),]
+# all(annotAll_genes$gene==d$gene)
+d_annot <- merge(d, annotAll_genes, by='gene')
+```
+
+Select significant
+
+```{r}
+fdr <- 0.05
+d_sing <- d[which(d$p.value < fdr),]
+d_sing_annot <- merge(d_sing, annotAll_genes, by='gene')
+d_sing_annot$id <- rownames(d_sing)
+dim(d_sing)[1]
+```
+
+## Plot
+
+Create a data.frame for ggplot:
+
+```{r}
+d_sing_samples <- d_sing[, grep('CMV|MYO', names(d_sing))]
+# melt
+d_sing_samples_melt <- melt(as.matrix(d_sing_samples))
+colnames(d_sing_samples_melt) <- c('id', 'sample', 'psi')
+# add annonation
+meta_exp_levels <- data.frame(condition=c(rep('CMV', 4), rep('MYO', 4)),
+                              sample=names(d_sing_samples))
+d_sing_2plot <- merge(d_sing_samples_melt, meta_exp_levels, by='sample')
+d_sing_2plot <- merge(d_sing_2plot, d_sing_annot, by='id', all.x=T)
+```
+
+Plot all sinificant genes:
+
+```{r, eval=FALSE}
+figurePath <- 'results/figures/SUPPA/'
+dir.create(figurePath, showWarnings = FALSE)
+plot_list <- list()
+genes2plot <- unique(as.character(d_sing_2plot$gene))
+for (s in genes2plot){
+  #s <- 'ENSG00000006128'
+  d2plot <- d_sing_2plot[which(d_sing_2plot$gene == s),]
+  pdf(paste(figurePath, d2plot$symbol, '_', d2plot$gene, '.pdf', sep=""), width = 8, height = 5)
+    p <- ggplot(d2plot) +
+            geom_point(aes(x = transcript,
+                           y = psi,
+                           color = condition,
+                           shape=condition),
+                       position=position_jitter(w=0.05,h=0),
+                       size = 2) +
+            xlab('Transcript') + 
+            ylab("PSI") +
+            ggtitle(paste(d2plot$symbol, d2plot$gene, sep = " - ")) +
+            theme_bw() +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            theme(plot.title=element_text(hjust=0.5))
+    print(p)
+    plot_list[[s]] <- p
+  dev.off()
+}
+
+pdf(paste(figurePath, '0_All_genes.pdf', sep=""), width = 8, height = 5)
+  for (s in genes2plot){
+      print(plot_list[[s]])
+  }
+dev.off()
+```
+
+## Table
+
+```{r}
+tablePath <- 'results/tables/SUPPA/'
+dir.create(tablePath, showWarnings = FALSE)
+
+write.table(d_sing_annot,
+            paste(tablePath, 'SUPPA_FDR_0.05.csv', sep=""),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+
+d_sing_annotPSI01 <- d_sing_annot[d_sing_annot$psi>=0.1,]
+write.table(d_sing_annotPSI01,
+            paste(tablePath, 'SUPPA_FDR_0.05_PSI_0.1.csv', sep=""),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+
+write.table(d_annot,
+            paste(tablePath, 'SUPPA_all.csv', sep=""),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+```

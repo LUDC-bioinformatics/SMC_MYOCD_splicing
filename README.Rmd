@@ -193,6 +193,8 @@ To visualize the results I used two programs:
 and
 [rmats2sashimiplot](https://github.com/Xinglab/rmats2sashimiplot/)
 
+The key result is presented in `PSI` - differential percent spliced-in, i.e. relative abundance.
+
 #### maser
 
 Select only significant events (FDR=0.05) with minimum change of 10% and average
@@ -255,6 +257,51 @@ Results:
 
 - `results/figures/rmats2sashimiplot/` - plots for all rMATS significant events.
 
+### Isoform-based analysis
+
+#### SUPPA
+
+Transcrips were counted with [Salmon](https://salmon.readthedocs.io/en/latest/index.html)
+The code is added to `code/Snakefile`.
+
+Then the counts were normilized to TPM and tested for differential transcript usage with
+[SUPPA2](https://github.com/comprna/SUPPA#differential-transcript-usage).
+The code is added to `code/Snakefile`.
+
+The results are processed and visualized in R:
+
+```{bash}
+R -e 'rmarkdown::render("code/SUPPA.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+- `results/tables/SUPPA/SUPPA_all.csv` - SUPPA all results.
+
+- `results/tables/SUPPA/SUPPA_FDR_0.05.pdf` - SUPPA significant results (FDR=0.05).
+
+- `results/tables/SUPPA/SUPPA_FDR_0.05_PSI_0.1.pdf` - SUPPA significant results (FDR=0.05)
+   with the PSI > 10%.
+   
+- `results/figures/SUPPA/` - plots for SUPPA significant results (FDR=0.05).
+
+### Overlap
+
+I also check hoe many genes that show alternative splicing overlap betweem analyses
+(FDR: DEXSeq=0.01, rMAT=0.05,  SUPPA=0.05):
+
+```{bash}
+R -e 'rmarkdown::render("code/splicing_overlap.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+- `results/tables/rMATS_DEXSeq_SUPPA_overlap.csv` - genes that are significant in all three analyses.
+
+- `results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv` - genes that are significant in at
+   least two analyses.
+
+- `results/figures/rmats_dexseq_suppa.pdf` - Venn Diagram of overlap bwteeen the three analyses.
 
 
 ```{bash, include=FALSE, eval=FALSE}

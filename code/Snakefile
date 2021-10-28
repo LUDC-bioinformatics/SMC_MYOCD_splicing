@@ -4,22 +4,25 @@ RAM = "64G"
 
 rule all:
     input:
-        expand('intermediate/fastQC/{sample}_R1_fastqc.zip', sample=SAMPLES),
-        expand('intermediate/fastQC/{sample}_R2_fastqc.zip', sample=SAMPLES),
-        'intermediate/STAR/GRCh38/',
-        expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
-                 sample=SAMPLES),
-        expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.toTranscriptome.out.bam',
-                 sample=SAMPLES),
-        'results/tables/featureCounts/featureCounts_counts_gene.csv.gz',
-        'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
-        'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
-        'results/reports/multiQC/multiqc_report.html',
-        'intermediate/DEXSeq/DEXSeq_symbol.gtf',
-        expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES),
-        #'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
-        'results/tables/rMATS/',
-        expand('results/figures/rMATS_rmats2sashimiplot_{Jtype}', Jtype=['SE','A5SS','A3SS','MXE','RI']),
+        # expand('intermediate/fastQC/{sample}_R1_fastqc.zip', sample=SAMPLES),
+        # expand('intermediate/fastQC/{sample}_R2_fastqc.zip', sample=SAMPLES),
+        # 'intermediate/STAR/GRCh38/',
+        # expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
+        #          sample=SAMPLES),
+        # expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.toTranscriptome.out.bam',
+        #          sample=SAMPLES),
+        # 'results/tables/featureCounts/featureCounts_counts_gene.csv.gz',
+        # 'results/tables/featureCounts/featureCounts_counts_exon.csv.gz',
+        # 'results/tables/featureCounts/featureCounts_counts_exon.csv.jcounts.gz',
+        # 'results/reports/multiQC/multiqc_report.html',
+        # 'intermediate/DEXSeq/DEXSeq_symbol.gtf',
+        # expand('results/tables/DEXSeq/{sample}.csv', sample=SAMPLES),
+        # 'intermediate/featureCounts/featureCounts_counts_exon_renamed.csv',
+        # 'intermediate/rMATS/',
+        # expand('results/figures/rMATS_rmats2sashimiplot_{Jtype}', Jtype=['SE','A5SS','A3SS','MXE','RI']),
+        # expand('results/tables/salmon/{sample}/quant.sf.gz', sample=SAMPLES),
+        'intermediate/suppa/salmon_TPM_isoform.dpsi',
+        'intermediate/suppa/salmon_TPM_isoform.clustvec',
 
 rule download_genome:
     output:
@@ -33,6 +36,19 @@ rule download_genome:
         export ftp_proxy=http://192.168.100.1:80
         wget -v -o {log} -P data/reference {params.url}
         gunzip {output}.gz
+        '''
+
+rule download_transcripts:
+    output:
+        'data/reference/gencode.v35.transcripts.fa.gz'
+    log:
+        "logs/wget_genome_fasta.log"
+    params:
+        url = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_35/gencode.v35.transcripts.fa.gz'
+    shell:
+        '''
+        export ftp_proxy=http://192.168.100.1:80
+        wget -v -o {log} -P data/reference {params.url}
         '''
 
 rule download_genome_GTF:
@@ -398,7 +414,7 @@ rule rMATS:
         b1 = 'conf/rMATS_CMV_bam.txt',
         b2 = 'conf/rMATS_MYO_bam.txt'
     output:
-        out = directory('results/tables/rMATS/'),
+        out = directory('intermediate/rMATS/'),
         tmp = temp(directory("intermediate/rMATS")),
         log = 'logs/rMATS.log'
     threads:
@@ -444,16 +460,15 @@ rule rmats2sashimiplot:
         bai = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.sorted.bam.bai',
               sample=SAMPLES),
         gff3 = 'data/reference/gencode.v35.primary_assembly.annotation.gff3',
-        res = 'results/tables/rMATS/SE.MATS.JC.txt',
+        res = 'intermediate/rMATS/SE.MATS.JC.txt',
         gf = 'conf/grouping.gf'
     params:
         CMV = lambda wildcards, input: ','.join(input.CMV),
         MYO = lambda wildcards, input: ','.join(input.CMV),
         Jtype = '{Jtype}'
     output:
-        tmp = directory('intermediate/rmats2sashimiplot/{Jtype}'),
-        out = directory('results/figures/rmats2sashimiplot/{Jtype}'),
-        log = 'logs/rmats2sashimiplot/{Jtype}.log'
+        out = directory('results/tables/rMATS_rmats2sashimiplot_{Jtype}'),
+        log = 'logs/rmats2sashimiplot_{Jtype}.log'
     shell:
         '''
         rmats2sashimiplot \
@@ -466,5 +481,159 @@ rule rmats2sashimiplot:
             -o {output.out} \
             --group-info {input.gf} \
             &> {output.log}
-        mv {output.tmp}/Sashimi_plot {output.out};
+        '''
+
+rule salmon_index:
+    input:
+        'data/reference/gencode.v35.transcripts.fa.gz'
+    output:
+        dir = directory('intermediate/salmon_index'),
+    threads:
+        CORES
+    log:
+        'logs/salmon/salmon_index.log'
+    shell:
+        '''
+        salmon index \
+            -p {threads} \
+            --gencode \
+            -t {input} \
+            -i {output.dir} \
+            2> {log}
+        '''
+
+rule salmon_quant:
+    input:
+        ref = 'intermediate/salmon_index',
+        R1 = 'data/fastq/{sample}_R1.fastq.gz',
+        R2 = 'data/fastq/{sample}_R2.fastq.gz'
+    output:
+        quant = 'results/tables/salmon/{sample}/quant.sf',
+    params:
+        out_dir = 'results/tables/salmon/{sample}'
+    threads:
+        CORES
+    log:
+        'logs/salmon/{sample}_quant.log'
+    shell:
+        '''
+        salmon quant \
+            -p {threads} \
+            -l A \
+            -i {input.ref} \
+            -1 {input.R1} \
+            -2 {input.R2} \
+            --seqBias \
+            --gcBias \
+            --validateMappings \
+            -o {params.out_dir} 2> {log}
+        '''
+
+rule sf_gzip:
+    input:
+        quant = 'results/tables/salmon/{sample}/quant.sf'
+    output:
+        quant = 'results/tables/salmon/{sample}/quant.sf.gz'
+    shell:
+        '''
+        gzip -c {input.quant} > {output.quant}
+        '''
+
+rule transcript2gene:
+    input:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf.gz'
+    output:
+        'intermediate/transcript2gene.csv'
+    shell:
+        '''
+        zcat {input} | \
+            awk '$3=="transcript"' | \
+            cut -f 9 | \
+            cut -d ";" -f 1,2 | \
+            sed 's/gene_id //;s/; transcript_id//' \
+            > {output}
+       '''
+
+rule salmon_TPM:
+    input:
+        quant = 'results/tables/salmon/{sample}/quant.sf.gz',
+        tx2gene = intermediate/transcript2gene.csv
+    output:
+        tpm = expand('results/tables/salmon/salmon_TPM_{cond}.csv',
+                cond=['CMV', 'MYO'])
+    shell:
+        '''
+        Rscript code/salmon2TPM.R
+        '''
+
+rule suppa_ioi:
+    input:
+        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
+    output:
+        'intermediate/suppa/gencode.v35.primary_assembly.annotation.ioi'
+    params:
+        'intermediate/suppa/gencode.v35.primary_assembly.annotation'
+    shell:
+        '''
+        suppa.py generateEvents \
+            -i {input} \
+            -o {params} \
+            -f ioi
+        '''
+
+rule suppa_psi:
+    input:
+        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf',
+        csv = 'results/tables/salmon/salmon_TPM_{cond}.csv'
+    output:
+        psi = 'intermediate/suppa/salmon_TPM_{cond}_isoform.psi'
+    params:
+        'intermediate/suppa/salmon_TPM_{cond}'
+    shell:
+        '''
+        suppa.py psiPerIsoform \
+            -g {input.gtf} \
+            -e {input.csv} \
+            -o {params}
+        '''
+
+rule suppa_DS:
+    input:
+        psi = expand('intermediate/suppa/salmon_TPM_{cond}_isoform.psi',
+                    cond=['CMV', 'MYO']),
+        ioi = 'intermediate/suppa/gencode.v35.primary_assembly.annotation.ioi',
+        csv = expand('results/tables/salmon/salmon_TPM_{cond}.csv',
+                    cond=['CMV', 'MYO'])
+    output:
+        dpsi = 'intermediate/suppa/salmon_TPM_isoform.dpsi',
+        psivec = 'intermediate/suppa/salmon_TPM_isoform.psivec'
+    params:
+        dpsi = 'intermediate/suppa/salmon_TPM_isoform'
+    shell:
+        '''
+        suppa.py diffSplice \
+            --method empirical \
+            --input {input.ioi} \
+            --psi {input.psi} \
+            --tpm {input.csv} \
+            -gc -me -nan 0.5 \
+            -o {params}
+        rename .temp.0 "" {output.dpsi}.temp.0
+        '''
+
+rule suppa_cluster:
+    input:
+        dpsi = 'intermediate/suppa/salmon_TPM_isoform.dpsi',
+        psivec = 'intermediate/suppa/salmon_TPM_isoform.psivec'
+    output:
+        clustvec = 'intermediate/suppa/salmon_TPM_isoform.clustvec'
+    params:
+        clustvec = 'salmon_TPM_isoform'
+    shell:
+        '''
+        suppa.py clusterEvents \
+            -d {input.dpsi} \
+            -p {input.psivec} \
+            --groups 1-4,5-8 \
+            -o {params}
         '''
