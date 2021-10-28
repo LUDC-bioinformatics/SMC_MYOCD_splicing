@@ -57,7 +57,7 @@ gtf <- rtracklayer::import.gff('data/reference/gencode.v35.annotation.gtf.gz')
 Splicing:
 
 ```{r, message=FALSE}
-d <- maser('results/tables/rMATS/', c("CMV", "MYO"), ftype = "JC")
+d <- maser('intermediate/rMATS/', c("CMV", "MYO"), ftype = "JC")
 d
 ```
 
@@ -99,6 +99,7 @@ abline(v=2, col= 'red', lwd=3)
 dfilter <- filterByCoverage(d, avg_reads = 3)
 
 dtop <- topEvents(dfilter, fdr = 0.05, deltaPSI = 0.1)
+dtop_fdr <- topEvents(d, fdr = 0.05, deltaPSI = 0.0)
 ```
 
 ### Summary
@@ -115,8 +116,13 @@ Extract gene IDs:
 Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
 for (i in Jtype){
    #i <- "SE"
-   dsumm <- summary(dtop, type = i)
+   dsumm <- summary(dtop_fdr, type = i)
    assign(paste('dtop', i, sep = ""), dsumm)
+}
+for (i in Jtype){
+   #i <- "SE"
+   dsumm <- summary(dtop, type = i)
+   assign(paste('dtop_fdr', i, sep = ""), dsumm)
 }
 ```
 
@@ -202,3 +208,18 @@ MCAM
 SVIL
 SORBS1
 ```
+
+Without the PSI and coverage filter:
+
+```{r}
+dtop_fdr_interesting_genes <- c()
+for (i in Jtype){
+   topSE <- summary(dtop_fdr, type = i)
+   interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), topSE$geneSymbol)
+   topSE_interesting_genes <- topSE[interesting_genes_rows,]
+   dtop_fdr_interesting_genes <- unique(c(dtop_fdr_interesting_genes,
+                                      topSE_interesting_genes$geneSymbol))
+}
+as.data.frame(dtop_fdr_interesting_genes)
+```
+

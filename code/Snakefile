@@ -193,7 +193,7 @@ rule qualimap:
             &> {log}
         '''
 
-rule featureCounts_gene:
+rule featureCounts:
     input:
         bam = expand('intermediate/STAR/{sample}_pass2/{sample}.Aligned.out.bam',
                      sample=SAMPLES),
@@ -217,7 +217,7 @@ rule featureCounts_gene:
             &> {output.log}
         '''
 
-rule columnRename_gene:
+rule columnRename:
     input:
         'intermediate/featureCounts/featureCounts_counts_gene.csv'
     output:
@@ -415,7 +415,7 @@ rule rMATS:
         b2 = 'conf/rMATS_MYO_bam.txt'
     output:
         out = directory('intermediate/rMATS/'),
-        tmp = temp(directory("intermediate/rMATS")),
+        tmp = temp(directory("intermediate/rMATS_tmp")),
         log = 'logs/rMATS.log'
     threads:
         CORES

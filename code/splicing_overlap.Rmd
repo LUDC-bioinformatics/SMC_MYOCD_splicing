@@ -119,8 +119,8 @@ annotAll <- queryMany(unique(gene_renamed),
                       return.as='DataFrame',
                       species='human',
                       returnall=FALSE)
-overlap_annot <- as.data.frame(annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
-colnames(overlap_annot)[c(1,2)] <- c('gene', 'entrez')
+rmats_dexseq_suppa_togather_annot <- as.data.frame(annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(rmats_dexseq_suppa_togather_annot)[c(1,2)] <- c('gene', 'entrez')
 ```
 
 ## Control genes
@@ -133,12 +133,23 @@ interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS
                        'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
 ```
 
-Extract the results for these genes: 
+These genes in at least two analyses:
 
 ```{r}
-interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), overlap_annot$symbol)
-dxr_interesting_genes <- overlap_annot[interesting_genes_rows,]
-knitr::kable(head(dxr_interesting_genes[,c(1:4)]))
+interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"),
+                               rmats_dexseq_suppa_togather_annot$symbol)
+rmats_dexseq_suppa_togather_int <- rmats_dexseq_suppa_togather_annot[
+                                                         interesting_genes_rows,]
+knitr::kable(head(rmats_dexseq_suppa_togather_int[,c(1:4)]))
+```
+
+These genes in all three analyses:
+
+```{r}
+rmats_dexseq_suppa_id <- gsub("\\..*","", rmats_dexseq_suppa)
+allTheeRows <- which(rmats_dexseq_suppa_togather_int$gene %in% rmats_dexseq_suppa_id)
+rmats_dexseq_suppa_int <- rmats_dexseq_suppa_togather_int[allTheeRows,]
+knitr::kable(head(rmats_dexseq_suppa_int[,c(1:4)]))
 ```
 
 ## Write results
@@ -146,7 +157,7 @@ knitr::kable(head(dxr_interesting_genes[,c(1:4)]))
 Genes that occur in at least two tests
 
 ```{r}
-write.table(overlap_annot,
+write.table(rmats_dexseq_suppa_togather_int,
             'results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv',
             quote = T,
             row.names = F,
@@ -156,7 +167,7 @@ write.table(overlap_annot,
 Genes that occur in  all three  tests
 
 ```{r}
-write.table(overlap_annot,
+write.table(rmats_dexseq_suppa_int,
             'results/tables/rMATS_DEXSeq_SUPPA_overlap.csv',
             quote = T,
             row.names = F,

@@ -139,6 +139,21 @@ pdf(paste(figurePath, '0_All_genes.pdf', sep=""), width = 8, height = 5)
 dev.off()
 ```
 
+## Interesting genes
+
+Which of the interesting genes have alternative splicing:
+
+```{r}
+interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
+                       'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
+                       'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5',
+                       'FLNA', 'MBNL1', 'ZFR', 'FNBP1', 'SORBS1', 'PIP5K1C',
+                       'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
+interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), d_sing_annot$symbol)
+interesting_genes_sign <- unique(d_sing_annot$symbol[interesting_genes_rows])
+interesting_genes_sign
+```
+
 ## Table
 
 ```{r}

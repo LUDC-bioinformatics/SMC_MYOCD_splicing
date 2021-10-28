@@ -18,14 +18,22 @@ qualimap:
   cores: 12
   ram: 64Gb
 
-rMATS_bam:
+rMATS:
   cores: 12
   ram: 16Gb
-
-rMATS_fq:
+  
+featureCounts:
   cores: 12
-  ram: 64Gb
+  ram: 16Gb
 
 sort_bam:
   cores: 12
   ram: 32Gb
+  
+salmon_index:
+  cores: 12
+  ram: 16Gb
+
+salmon_quant:
+  cores: 12
+  ram: 16Gb
