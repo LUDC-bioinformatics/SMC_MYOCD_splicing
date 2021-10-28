@@ -11,7 +11,7 @@ output:
 ---
     
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=FALSE)
 knitr::opts_knit$set(root.dir = '/home/dmytro/Science/myocardin_splicing_Ola_Karl/')
 ```
 
@@ -28,6 +28,14 @@ library(gridExtra)
 ```
 
 ## Data
+
+```{r, message= FALSE, echo=FALSE, eval=TRUE}
+rdataFile <- 'intermediate/DEXSeq.RData'
+if (file.exists(rdataFile)){
+  load(rdataFile)
+  knitr::opts_chunk$set(eval=FALSE)
+}
+```
 
 Load the counts:
 
@@ -50,21 +58,25 @@ dxd <- DEXSeqDataSetFromHTSeq(countFiles,
 dxd <- dxd[sample(nrow(dxd), 10000), ]
 ```
 
-Counts:
+Remove lowly expressed
 
 ```{r}
-knitr::kable(head(featureCounts(dxd)))
+#hist(rowSums(featureCounts(dxd)), breaks = 10000000, xlim=c(0, 30))
+dim(dxd)[1]
+keep <- which(rowSums(featureCounts(dxd))>0)
+length(keep)
+dxd <- dxd[keep,]
 ```
 
 Print the first 3 lines of the feature data annotation:
 
-```{r}
+```{r, eval=TRUE}
 knitr::kable(head(rowRanges(dxd), 3))
 ```
 
 Check the design:
 
-```{r}
+```{r, eval=TRUE}
 knitr::kable(sampleAnnotation(dxd))
 ```
 
@@ -88,7 +100,7 @@ The dependence is not a problem since the testing in DEXSeq is marginal (bin by 
 
 **Library size barplot & counts distribution boxplot**
 
-```{r, fig.height=7}
+```{r, fig.height=7, eval=TRUE}
 colors2 <- brewer.pal(3, 'Accent')[c(1,2)]
 condition_color <- c(rep(colors2[1], 4),rep(colors2[2], 4))
 par(mfcol=c(2,1))
@@ -118,7 +130,7 @@ abline(h=median(as.matrix(logCPM)), lty=2, col='lightgrey')
 
 **Samples density plot**
 
-```{r}
+```{r, eval=TRUE}
 condition <- c(rep('control', 4), rep('treatment', 4))
 logCPM_dens <- data.frame(logCPM=as.vector(t(logCPM)),
                           samples=rep(colnames(logCPM), dim(logCPM)[1]),
@@ -140,7 +152,7 @@ legend('topright',
 
 Condition density plot
 
-```{r}
+```{r, eval=TRUE}
 ggplot(logCPM_dens, aes(x = logCPM, colour = condition)) +
   geom_density(alpha = 0.5, size = 1.5) + theme_bw() +
   theme(legend.position = 'top') + xlab(expression(log[2](count + 1)))
@@ -152,14 +164,13 @@ ggplot(logCPM_dens, aes(x = logCPM, colour = condition)) +
 The same method as in DESeq2:
 
 ```{r}
-ncores <- MulticoreParam(6)
 dxd <- estimateSizeFactors(dxd)
-dxd <- estimateDispersions(dxd, BPPARAM=ncores)
+dxd <- estimateDispersions(dxd)
 ```
 
 Plot dispersion:
 
-```{r}
+```{r, eval=TRUE}
 plotDispEsts(dxd)
 ```
 
@@ -186,9 +197,13 @@ dxr <- DEXSeqResults(dxd)
 knitr::kable(head(dxr))
 ```
 
+```{r, eval=FALSE}
+save.image(file = "intermediate/DEXSeq.RData")
+```
+
 Description of each column:
 
-```{r}
+```{r, eval=TRUE}
 mcols(dxr)$description
 ```
 
@@ -196,11 +211,11 @@ mcols(dxr)$description
 
 How many exonic exons are significant with a false discovery rate of 1%?
 
-```{r}
+```{r, eval=TRUE}
 sum(dxr$padj < 0.01, na.rm = T)
 ```
 
-```{r}
+```{r, eval=TRUE}
 plotMA(dxr, cex=1)
 ```
 
@@ -208,7 +223,7 @@ plotMA(dxr, cex=1)
 
 How many genes are affected?
 
-```{r}
+```{r, eval=TRUE}
 sum(tapply(dxr$padj < 0.01, dxr$groupID, any), na.rm = T)
 ```
 
@@ -217,7 +232,7 @@ However, sometimes it is informative to know what is the FDR at the gene level,
 i.e. knowing the number of genes with at least one differentially used exon
 while keeping control of FDR.
 
-```{r}
+```{r, eval=TRUE}
 dxr_geneFDR <- perGeneQValue(dxr)
 dxr_geneFDR <- as.data.frame(dxr_geneFDR[order(dxr_geneFDR)])
 colnames(dxr_geneFDR) <- 'gene_level_FDR'
@@ -228,11 +243,11 @@ sum(dxr_geneFDR$gene_level_FDR < 0.01)
 
 Test with **MYOCD**.
 
-```{r}
+```{r, eval=TRUE}
 head(dxr[order(dxr$padj),'groupID'])
 ```
 
-```{r}
+```{r, eval=TRUE}
 plotDEXSeq(dxr, 'ENSG00000141052.18_MYOCD',
            displayTranscripts=TRUE,
            splicing=TRUE,
@@ -242,10 +257,10 @@ plotDEXSeq(dxr, 'ENSG00000141052.18_MYOCD',
 
 CHRM3
 
-```{r}
+```{r, eval=TRUE}
 dxrDF <- as.data.frame(dxr)
 dxrDF$padj <- p.adjust(dxrDF$pvalue, method = 'fdr')
-sum(p.adjust(dxrDF$pvalue, method = 'fdr') < 0.01, na.rm = T)
+#sum(p.adjust(dxrDF$pvalue, method = 'fdr') < 0.01, na.rm = T)
 CHRM3 <- dxrDF[grep('ENSG00000133019.12', rownames(dxrDF)), ]
 ```
 
@@ -262,7 +277,7 @@ Differentially splicing of the following genes is of interest:
 TGFB11, PKD1, MYL6, PDLIM5, FLNA, MBNL1, ZFR, FNBP1, SORBS1, PIP5K1C,
 TNRC18, SVIL, KLHL42, LARGE1, MICAL3*
 
-```{r}
+```{r, eval=TRUE}
 interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS2', 'KCNMB1',
                        'ACTN1', 'SMTN', 'NFIC', 'BICD2', 'TEAD1', 'TPM1', 'TPM2',
                        'PDLIM7', 'FHL1', 'CSR2', 'TGFB11', 'PKD1', 'MYL6', 'PDLIM5',
@@ -272,7 +287,7 @@ interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS
 
 Extract the results for these genes: 
 
-```{r}
+```{r, eval=TRUE}
 interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"), dxr$groupID)
 dxr_interesting_genes <- dxr[interesting_genes_rows,]
 knitr::kable(head(dxr_interesting_genes))
@@ -282,19 +297,19 @@ How many genes are significant?
 
 FDR < 0.01
 
-```{r}
+```{r, eval=TRUE}
 sum(tapply(dxr_interesting_genes$padj < 0.01, dxr_interesting_genes$groupID, any), na.rm = T)
 ```
 
 FDR < 0.05
 
-```{r}
+```{r, eval=TRUE}
 sum(tapply(dxr_interesting_genes$padj < 0.05, dxr_interesting_genes$groupID, any), na.rm = T)
 ```
 
 What are those genes?
 
-```{r}
+```{r, eval=TRUE}
 unique(dxr_interesting_genes[which(dxr_interesting_genes$padj < 0.05), 'groupID'])
 ```
 
@@ -302,7 +317,7 @@ unique(dxr_interesting_genes[which(dxr_interesting_genes$padj < 0.05), 'groupID'
 
 Look at top percentiles
 
-```{r}
+```{r, eval=TRUE}
 colors5 <- brewer.pal(5, 'Accent')
 topPerc <- c(0.05, 0.01, 0.001, 0.0001)
 topPerc_log2FC <- quantile(dxr$log2fold_treatment_control, 1-topPerc/2, na.rm=T)
@@ -347,7 +362,7 @@ dev.off()
 
 Filter:
 
-```{r}
+```{r, eval=TRUE}
 threshold_padj <- 0.01
 threshold_log2FC <- 1
 threshold_expr <- 10
@@ -364,7 +379,7 @@ length(unique(dxr_top$groupID))
 
 Check how many of the candidate genes are in this list:
 
-```{r}
+```{r, eval=TRUE}
 dxr_top_candidates_rows <- grep(paste(interesting_genes,collapse="|"), dxr_top$groupID)
 dxr_top_candidates <- dxr_top[dxr_top_candidates_rows,]
 unique(dxr_top_candidates$groupID)
