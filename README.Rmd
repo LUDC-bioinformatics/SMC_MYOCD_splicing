@@ -303,6 +303,15 @@ Results:
    
    - `results/figures/rmats_dexseq_suppa.pdf` - Venn Diagram of overlap between the three analyses.
 
+### Results interpretation
+
+The exon order and genes are presented as in the reference. Strand of a gene can vary:
+
+   - `+` - positive, or 5'->3'
+   - `-` - negative, or 3'->5'
+   - `.` - undetermined.
+
+You can find this information in `intermediate/gene_coord_strand.csv`
 
 ```{bash, include=FALSE, eval=FALSE}
 rsync -rv --dry-run --progress -e 'ssh -p 22022' \

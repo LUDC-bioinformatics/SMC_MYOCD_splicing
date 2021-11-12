@@ -4,7 +4,7 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "28 oktober, 2021"
+date: "12 november, 2021"
 output:
   html_document:
     keep_md: true
@@ -209,12 +209,12 @@ R -e 'rmarkdown::render("code/maser.Rmd", output_dir="results/reports/")'
 
 Results:
 
-- `results/figures/rMATS_sign/` - plots.
+- `results/figures/rMATS/` - plots.
 
-- `results/tables/rMATS_sign/` - tables.
+- `results/tables/rMATS/` - tables.
 
 
-Maybe [add pritens info](https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Protein_mapping.html) to selected candidates.
+Maybe [add proteins info](https://www.bioconductor.org/packages/release/bioc/vignettes/maser/inst/doc/Protein_mapping.html) to selected candidates.
 
 #### rmats2sashimiplot
 
@@ -261,7 +261,7 @@ condor_submit code/rmats2sashimiplot.condorjob
 
 Results:
 
-- `results/figures/rmats2sashimiplot/` - plots for all rMATS significant events.
+   - `results/figures/rmats2sashimiplot/` - plots for all rMATS significant events.
 
 ### Isoform-based analysis
 
@@ -294,7 +294,7 @@ Results:
 
 ### Overlap
 
-I also check hoe many genes that show alternative splicing overlap betweem analyses
+I also check how many genes that show alternative splicing overlap betweem analyses
 (FDR: DEXSeq=0.01, rMAT=0.05,  SUPPA=0.05):
 
 
@@ -304,12 +304,21 @@ R -e 'rmarkdown::render("code/splicing_overlap.Rmd", output_dir="results/reports
 
 Results:
 
-- `results/tables/rMATS_DEXSeq_SUPPA_overlap.csv` - genes that are significant in all three analyses.
+   - `results/tables/rMATS_DEXSeq_SUPPA_overlap.csv` - genes that are significant in all three analyses.
+   
+   - `results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv` - genes that are significant in at
+      least two analyses.
+   
+   - `results/figures/rmats_dexseq_suppa.pdf` - Venn Diagram of overlap between the three analyses.
 
-- `results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv` - genes that are significant in at
-   least two analyses.
+### Results interpretation
 
-- `results/figures/rmats_dexseq_suppa.pdf` - Venn Diagram of overlap bwteeen the three analyses.
+The exon order and genes are presented as in the reference. Strand of a gene can vary:
 
+   - `+` - positive, or 5'->3'
+   - `-` - negative, or 3'->5'
+   - `.` - undetermined.
+
+You can find this information in `intermediate/gene_coord_strand.csv`
 
 
