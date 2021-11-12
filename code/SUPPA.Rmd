@@ -179,3 +179,45 @@ write.table(d_annot,
             row.names = F,
             sep = '\t')
 ```
+
+
+## Clusters
+
+```{r}
+clust <- read.table('intermediate/suppa/salmon_TPM_isoform.clustvec',
+                   col.names = c('id', 'cluster',	'CMV',	'MYO'),
+                   sep = "\t", header = F)
+clust$cluster <- as.factor(clust$cluster)
+head(clust)
+```
+
+
+```{r, message=FALSE}
+# melt
+library(reshape2)
+library(ggplot2)
+#levels(clust$cluster)
+
+# plot
+for (i in c(0:2)){
+  #i <- 0
+  d <- clust[clust$cluster==i,]
+  d_melt <- melt(d)
+  gd <- ggplot(d_melt) +
+          geom_point(aes(x = variable,
+                         y = value,
+                         color = variable,
+                         shape = variable),
+                       position=position_jitter(w=0.01,h=0), show.legend = FALSE) +
+          ylab('PSI') +
+          ggtitle('Isoform cluster') +
+          geom_line(aes(x = variable,
+                        y = value,
+                        group = id,
+                        color = id), size=0.2, alpha=0.3, show.legend = FALSE) +
+          theme_bw() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6)) +
+          theme(plot.title=element_text(hjust=0.5))
+  print(gd)
+}
+```

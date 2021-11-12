@@ -100,27 +100,44 @@ rmats_dexseq <- intersect(rmats, dexseq)
 rmats_suppa <- intersect(rmats, suppa_isoform)
 suppa_dexseq <- intersect(suppa_isoform, dexseq)
 rmats_dexseq_suppa <- intersect(rmats_dexseq, suppa_isoform)
-rmats_dexseq_suppa_togather <- unique(c(rmats_dexseq, rmats_suppa, suppa_dexseq))
+rmats_dexseq_suppa_atleast2 <- unique(c(rmats_dexseq, rmats_suppa, suppa_dexseq))
 
 length(rmats_dexseq)/length(rmats)
 length(rmats_suppa)/length(rmats)
 length(suppa_dexseq)/length(suppa_isoform)
 length(rmats_dexseq_suppa)/length(rmats)
-length(rmats_dexseq_suppa_togather)
+length(rmats_dexseq_suppa_atleast2)
 ```
 
 ## Annotate the overlap genes
 
+In all 3 methods
+
 ```{r, message=FALSE, error=FALSE, eval=TRUE}
-gene_renamed <- gsub("\\..*","", rmats_dexseq_suppa_togather)
-annotAll <- queryMany(unique(gene_renamed),
+rmats_dexseq_suppa_renamed <- gsub("\\..*","", rmats_dexseq_suppa)
+
+rmats_dexseq_suppa_annotAll <- queryMany(unique(rmats_dexseq_suppa_renamed),
                       scopes='ensembl.gene',
                       fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
                       return.as='DataFrame',
                       species='human',
                       returnall=FALSE)
-rmats_dexseq_suppa_togather_annot <- as.data.frame(annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
-colnames(rmats_dexseq_suppa_togather_annot)[c(1,2)] <- c('gene', 'entrez')
+rmats_dexseq_suppa_annot <- as.data.frame(rmats_dexseq_suppa_annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(rmats_dexseq_suppa_annot)[c(1,2)] <- c('gene', 'entrez')
+```
+
+In at least 2 methods
+
+```{r, message=FALSE, error=FALSE, eval=TRUE}
+rmats_dexseq_suppa_atleast2_renamed <- gsub("\\..*","", rmats_dexseq_suppa_atleast2)
+rmats_dexseq_suppa_atleast2_annotAll <- queryMany(unique(rmats_dexseq_suppa_atleast2_renamed),
+                      scopes='ensembl.gene',
+                      fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+rmats_dexseq_suppa_atleast2_annot <- as.data.frame(rmats_dexseq_suppa_atleast2_annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(rmats_dexseq_suppa_atleast2_annot)[c(1,2)] <- c('gene', 'entrez')
 ```
 
 ## Control genes
@@ -133,31 +150,12 @@ interesting_genes <- c('MYOCD', 'MYH11', 'MCAM', 'SYNM', 'RRAS', 'RBPMS', 'RBPMS
                        'TNRC18', 'SVIL', 'KLHL42', 'LARGE1', 'MICAL3')
 ```
 
-These genes in at least two analyses:
-
-```{r}
-interesting_genes_rows <- grep(paste(interesting_genes,collapse="|"),
-                               rmats_dexseq_suppa_togather_annot$symbol)
-rmats_dexseq_suppa_togather_int <- rmats_dexseq_suppa_togather_annot[
-                                                         interesting_genes_rows,]
-knitr::kable(head(rmats_dexseq_suppa_togather_int[,c(1:4)]))
-```
-
-These genes in all three analyses:
-
-```{r}
-rmats_dexseq_suppa_id <- gsub("\\..*","", rmats_dexseq_suppa)
-allTheeRows <- which(rmats_dexseq_suppa_togather_int$gene %in% rmats_dexseq_suppa_id)
-rmats_dexseq_suppa_int <- rmats_dexseq_suppa_togather_int[allTheeRows,]
-knitr::kable(head(rmats_dexseq_suppa_int[,c(1:4)]))
-```
-
 ## Write results
 
 Genes that occur in at least two tests
 
 ```{r}
-write.table(rmats_dexseq_suppa_togather_int,
+write.table(rmats_dexseq_suppa_atleast2_annot,
             'results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv',
             quote = T,
             row.names = F,
@@ -167,7 +165,7 @@ write.table(rmats_dexseq_suppa_togather_int,
 Genes that occur in  all three  tests
 
 ```{r}
-write.table(rmats_dexseq_suppa_int,
+write.table(rmats_dexseq_suppa_annot,
             'results/tables/rMATS_DEXSeq_SUPPA_overlap.csv',
             quote = T,
             row.names = F,
