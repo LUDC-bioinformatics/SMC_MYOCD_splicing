@@ -4,7 +4,7 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "12 november, 2021"
+date: "27 januari, 2022"
 output:
   html_document:
     keep_md: true
@@ -155,6 +155,7 @@ Performed with [DEXSeq](https://bioconductor.org/packages/release/bioc/vignettes
 
 ```bash
 R -e 'rmarkdown::render("code/DEXSeq.Rmd", output_dir="results/reports/")'
+Rscript code/DEXSeq_to_exons.R
 ```
 
 Results:
@@ -168,6 +169,9 @@ Results:
 - `results/tables/DEXSeq/DEXSeq_results.csv` - results of the differential exon usage analysis.
 
 - `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
+
+- `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correpondance between the DEXSeq bins and real exons.
+
 
 Enrichment
 
