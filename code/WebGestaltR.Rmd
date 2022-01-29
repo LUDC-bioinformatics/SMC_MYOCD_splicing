@@ -1,0 +1,286 @@
+---
+title: "Myocardin splicing: WebGestaltR enrichment analysis"
+author:
+  name: "Dmytro Kryvokhyzha"
+email: dmytro.kryvokhyzha@med.lu.se
+affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  toc: true
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(WebGestaltR)
+repor_dir <- 'results/reports/WebGestaltR'
+```
+
+## Data
+
+Get genes for FDR<0.01:
+ 
+```{bash, eval=FALSE}
+mkdir -p intermediate/WebGestaltR/
+
+awk '$2<=0.01' results/tables/DEXSeq/DEXSeq_results_geneFDR.csv \
+  > intermediate/WebGestaltR/DEXSeq_results_geneFDR0.01.csv
+  
+python code/DEXSeq_to_genes.py \
+  -i intermediate/WebGestaltR/DEXSeq_results_geneFDR0.01.csv \
+  -c gene_level_FDR \
+  -o intermediate/WebGestaltR/DEXSeq_results_FDR0.01genes.csv
+
+python code/DEXSeq_to_genes.py \
+  -i results/tables/DEXSeq/DEXSeq_results_geneFDR.csv \
+  -c gene_level_FDR \
+  -o intermediate/WebGestaltR/DEXSeq_results_FDRgenes.csv
+```
+
+Load the data:
+
+```{r}
+dDE <- read.table('intermediate/WebGestaltR/DEXSeq_results_FDR0.01genes.csv',
+                  sep = "\t", header = T)
+dall <- read.table('intermediate/WebGestaltR/DEXSeq_results_FDRgenes.csv',
+                   sep = "\t", header = T)
+```
+
+Create lists:
+
+```{r}
+DEgene <- gsub("\\..*","", dDE$gene)
+Allgene <- gsub("\\..*","", dall$gene)
+length(DEgene)
+length(Allgene)
+```
+
+## Enrichment
+
+### KEGG
+
+```{r}
+ora_kegg <- WebGestaltR(interestGene = DEgene,
+                        referenceGene = Allgene,
+                        interestGeneType = "ensembl_gene_id",
+                        referenceGeneType = "ensembl_gene_id",
+                        enrichMethod = "ORA",
+                        organism = "hsapiens",
+                        enrichDatabase = 'pathway_KEGG',
+                        sigMethod = "fdr",
+                        fdrMethod = "BH",
+                        fdrThr = 0.05,
+                        reportNum = 30,
+                        minNum = 5,
+                        maxNum = 2000,
+                        isOutput = TRUE,
+                        outputDirectory = repor_dir,
+                        projectName = 'DEXSeq_geneFDR0.01_ORA_KEGG',
+                        nThreads = 8)
+ora_kegg <- ora_kegg[order(ora_kegg$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_kegg[,c('description', 'enrichmentRatio')]))
+```
+
+### GO
+
+```{r}
+ora_go <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = c('geneontology_Biological_Process_noRedundant',
+                                         'geneontology_Cellular_Component_noRedundant',
+                                         'geneontology_Molecular_Function_noRedundant'),
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_GO',
+                      nThreads = 8)
+ora_go <- ora_go[order(ora_go$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_go[,c('description', 'enrichmentRatio')]))
+```
+
+### Panther
+
+```{r}
+ora_Panther <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Panther',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_Panther',
+                      nThreads = 8)
+ora_Panther <- ora_Panther[order(ora_Panther$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_Panther[,c('description', 'enrichmentRatio')]))
+```
+
+### Reactome
+
+```{r}
+ora_Reactome <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Reactome',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_Reactome',
+                      nThreads = 8)
+ora_Reactome <- ora_Reactome[order(ora_Reactome$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_Reactome[,c('description', 'enrichmentRatio')]))
+```
+
+### Wikipathway
+
+```{r}
+ora_Wikipathway <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Wikipathway',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_Wikipathway',
+                      nThreads = 8)
+ora_Wikipathway <- ora_Wikipathway[order(ora_Wikipathway$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_Wikipathway[,c('description', 'enrichmentRatio')]))
+```
+
+### network_CORUM
+
+```{r}
+ora_CORUM <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'network_CORUM',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_CORUM',
+                      nThreads = 8)
+ora_CORUM <- ora_CORUM[order(ora_CORUM$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_CORUM[,c('description', 'enrichmentRatio')]))
+```
+
+### CORUMA
+
+```{r}
+ora_CORUMA <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'network_CORUMA',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_CORUMA',
+                      nThreads = 8)
+ora_CORUMA <- ora_CORUMA[order(ora_CORUMA$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_CORUMA[,c('description', 'enrichmentRatio')]))
+```
+
+### phenotype_Human_Phenotype_Ontology
+
+```{r}
+ora_Phenotype <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'phenotype_Human_Phenotype_Ontology',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_Phenotype',
+                      nThreads = 8)
+ora_Phenotype <- ora_Phenotype[order(ora_Phenotype$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_Phenotype[,c('description', 'enrichmentRatio')]))
+```
+
+### community-contributed_MuscleGeneSets_Duddy_2017
+
+```{r}
+ora_MuscleGeneSets <- WebGestaltR(interestGene = DEgene,
+                      referenceGene = Allgene,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'community-contributed_MuscleGeneSets_Duddy_2017',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DEXSeq_geneFDR0.01_ORA_MuscleGeneSets',
+                      nThreads = 8)
+ora_MuscleGeneSets <- ora_MuscleGeneSets[order(ora_MuscleGeneSets$enrichmentRatio, decreasing = T),]
+knitr::kable(head(ora_MuscleGeneSets[,c('geneSet', 'enrichmentRatio')]))
+```
+
+```{bash, include=F, eval=T}
+rename.ul 'Project_' "" results/reports/WebGestaltR/Project_*
+```

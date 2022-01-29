@@ -1,0 +1,536 @@
+---
+title: "Myocardin splicing: overlap between DEXSeq rMATS SUPPA results"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## Dependecies
+
+```{r, message=FALSE, eval=TRUE}
+library(DEXSeq)
+library(GenomicFeatures)
+library(GenomicRanges)
+library(VennDiagram)
+library(RColorBrewer)
+```
+
+## Functions
+
+```{r}
+getrMATS <- function(type, target){
+   # type <- 'A5SS'
+   # target <- 'exon_long'
+   rMATS <- read.table(paste('results/tables/rMATS/rMATS_sign_' , type, '.csv', sep=""),
+                             header = T, sep = '\t')
+   rMATS_coord <- data.frame(do.call('rbind', strsplit(as.character(rMATS[,target]),
+                                                    '-', fixed=TRUE)))
+   start <- paste(target, '_start', sep = "")
+   end <- paste(target, '_end', sep = "")
+   rMATS[,start] <- as.numeric(levels(rMATS_coord$X1))[rMATS_coord$X1]
+   rMATS[,end] <- as.numeric(levels(rMATS_coord$X2))[rMATS_coord$X2]
+   rMATS$IncLevelDifference <- rMATS$IncLevelDifference
+   rMATS <- merge(rMATS, exon_id[,c('exon_chr', 'exon_start', 'exon_end',
+                                      'exon_id', 'exon_number')],
+                           by.x=c('Chr', start, end),
+                           by.y = c('exon_chr', 'exon_start', 'exon_end'))
+   rMATSexons <- GRanges(seqnames=rMATS$Chr,
+                     ranges=IRanges(rMATS[,start], rMATS[,end]),
+                     strand=rMATS$Strand,
+                     mcols=rMATS[,c(target, 'PValue', 'FDR', 'IncLevelDifference',
+                                 'exon_id')])
+   rMATS[,start] <- NULL
+   rMATS[,end] <- NULL
+   return(list(rMATS, rMATSexons))
+}
+
+findOverlap2 <- function(rMATSd, rMATSname){
+   #rMATSd <- rMATS_SEexon
+   #rMATSname <- 'rMATS_SE'
+   overlap <- as.data.frame(findOverlaps(exonDEXSeq, rMATSd))
+   # combine hits
+   exonDEXSeq_ordered <- as.data.frame(exonDEXSeq[overlap$queryHits,])
+   rMATSd_ordered <- as.data.frame(rMATSd[overlap$subjectHits,])
+   colnames(exonDEXSeq_ordered) <- paste('DEXSeq', sub("mcols.", "", colnames(exonDEXSeq_ordered)),
+                                         sep = "_")
+   colnames(exonDEXSeq_ordered)[1]<- 'DEXSeq_chr'
+   colnames(rMATSd_ordered) <- paste(rMATSname, sub("mcols.", "", colnames(rMATSd_ordered)),
+                                         sep = "_")
+   exonDEXSeq_rMATSd <- cbind(exonDEXSeq_ordered, rMATSd_ordered)
+   first_columns <- c('DEXSeq_groupID', 'DEXSeq_featureID')
+   exonDEXSeq_rMATSd <- exonDEXSeq_rMATSd[,c(first_columns,
+                                            setdiff(colnames(exonDEXSeq_rMATSd), first_columns))]
+   exonDEXSeq_rMATSd <- exonDEXSeq_rMATSd[,c(setdiff(colnames(exonDEXSeq_rMATSd),
+                                                       'DEXSeq_transcripts'), 'DEXSeq_transcripts')]
+   exonDEXSeq_rMATSd <- unique(exonDEXSeq_rMATSd[order(exonDEXSeq_rMATSd$DEXSeq_chr,
+                                                exonDEXSeq_rMATSd$DEXSeq_start,
+                                                exonDEXSeq_rMATSd$DEXSeq_end),])
+   return(exonDEXSeq_rMATSd)
+}
+
+findOverlap3 <- function(findOverlap2D){
+   #findOverlap2D <- dexseq_sing_transcrips
+   findOverlap2D_transcripts <- unique(unlist(strsplit(gsub('c\\(|\\)|,', '',
+                                                 findOverlap2D$DEXSeq_transcripts), " ")))
+   findOverlap2D_SUPPA_transcripts <- intersect(suppa$transcript, findOverlap2D_transcripts)
+   
+   # add SUPPA column to the results overlap
+   findOverlap2D_SUPPA <- findOverlap2D
+   findOverlap2D_SUPPA$SUPPA_overlap <- NA
+   for (i in c(1:length(findOverlap2D_SUPPA$DEXSeq_transcripts))){
+      #i <- 16
+      transc_list <- unique(unlist(strsplit(gsub('c\\(|\\)|,', '',
+                findOverlap2D_SUPPA$DEXSeq_transcripts[i]), " ")))
+      transc_list_SUPPA <- intersect(findOverlap2D_SUPPA_transcripts, transc_list)
+      if (!identical(transc_list_SUPPA, character(0))){
+         findOverlap2D_SUPPA$SUPPA_overlap[i] <- paste(transc_list_SUPPA, collapse = ",")
+      }
+   }
+   findOverlap2D_SUPPA <- findOverlap2D_SUPPA[,c(setdiff(colnames(findOverlap2D_SUPPA),
+                                               'DEXSeq_transcripts'), 'DEXSeq_transcripts')]
+   return(list(findOverlap2D_SUPPA,
+               findOverlap2D_transcripts))
+}
+
+rMATS2Tx <- function(rMATSd){
+   #rMATSd <- rMATS_SEexon
+   rMATS_transcript <- as.data.frame(findOverlaps(transcripts, rMATSd))
+   transcripts_ordered <- as.data.frame(transcripts[rMATS_transcript$queryHits,],
+                                              row.names = NULL)
+   rMATSd_ordered <- as.data.frame(rMATSd[rMATS_transcript$subjectHits,])
+   rMATSd_ordered$transcript <- transcripts_ordered$tx_name
+   rMATSd_transcript <- unique(rMATSd_ordered$transcript)
+   return(rMATSd_transcript)
+}
+```
+
+## Data
+
+### Transcrips
+
+```{r, message=FALSE}
+transcriptDb <- makeTxDbFromGFF("data/reference/gencode.v35.primary_assembly.annotation.gtf",
+                                format="gtf")
+transcripts <- unlist(transcriptsBy(transcriptDb, "exon", use.names=TRUE))
+```
+
+
+### exon_id
+
+```{r}
+exon_id <- read.table('results/tables/DEXSeq/DEXSeq_results_bins2exons.csv',
+                      header = T, sep = '\t')
+```
+
+### DEXSeq
+
+```{r}
+dexseq <- read.table('results/tables/DEXSeq/DEXSeq_results.csv', header = T, sep = '\t')
+dexseq_sing <- dexseq[which(dexseq$padj<=0.01),]
+
+exonDEXSeq <- GRanges(seqnames=dexseq_sing$genomicData.seqnames,
+                      ranges=IRanges(dexseq_sing$genomicData.start,
+                                     dexseq_sing$genomicData.end),    
+                      strand=dexseq_sing$genomicData.strand,
+                      mcols=dexseq_sing[,
+                      c('groupID', 'featureID', 'log2fold_treatment_control', 'transcripts')])
+```
+
+How many exons the DEXSeq bins cover:
+
+```{r}
+dim(dexseq_sing)[1]
+length(unique(unlist(strsplit(as.character(dexseq_sing$exon_id), ","))))
+```
+
+### rMATS
+
+SE
+
+```{r}
+rMATS_SEall <- getrMATS('SE', 'exon_target')
+rMATS_SE <- rMATS_SEall[[1]]
+rMATS_SEexon <- rMATS_SEall[[2]]
+```
+
+A5SS
+
+```{r}
+rMATS_A5SSall <- getrMATS('A5SS', 'exon_long')
+rMATS_A5SS <- rMATS_A5SSall[[1]]
+rMATS_A5SSexon <- rMATS_A5SSall[[2]]
+```
+
+A3SS
+
+```{r}
+rMATS_A3SSall <- getrMATS('A3SS', 'exon_long')
+rMATS_A3SS <- rMATS_A3SSall[[1]]
+rMATS_A3SSexon <- rMATS_A3SSall[[2]]
+```
+
+MXE
+
+```{r}
+rMATS_MXE <- read.table('results/tables/rMATS/rMATS_sign_MXE.csv', header = T, sep = '\t')
+rMATS_MXE_1_all <- getrMATS('MXE', 'exon_1')
+rMATS_MXE_1exon <- rMATS_MXE_1_all[[2]]
+rMATS_MXE_2_all <- getrMATS('MXE', 'exon_2')
+rMATS_MXE_2exon <- rMATS_MXE_2_all[[2]]
+```
+
+RI
+
+```{r}
+rMATS_RIall <- getrMATS('RI', 'exon_ir')
+rMATS_RI <- rMATS_RIall[[1]]
+rMATS_RIexon <- rMATS_RIall[[2]]
+```
+
+### SUPPA
+
+```{r}
+suppa <- read.table('results/tables/SUPPA/SUPPA_FDR_0.05.csv', header = T, sep = '\t')
+head(suppa)
+```
+
+## Find overlap
+
+### rMATS_SE vs DEXSeq
+
+How many exons overlap
+
+```{r}
+DEXSeq_rMATS_SE <- findOverlap2(rMATS_SEexon, 'rMATS_SE')
+DEXSeq_rMATS_SE_L <- length(unique(DEXSeq_rMATS_SE[,c('rMATS_SE_exon_target')]))
+rMATS_SE_L <- dim(unique(rMATS_SE[,c("Chr", "exon_target")]))[1]
+
+rMATS_SE_L
+DEXSeq_rMATS_SE_L
+```
+
+Correlation in results
+
+```{r}
+DEXSeq_rMATS_SE_unique <- DEXSeq_rMATS_SE[
+                            !duplicated(DEXSeq_rMATS_SE[,
+                            c('rMATS_SE_seqnames', 'rMATS_SE_start', 'rMATS_SE_end')]),]
+# correct sign
+DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference <-
+   DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference*-1
+plot(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
+     DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference,
+     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="SE")
+abline(lm(rMATS_SE_IncLevelDifference~DEXSeq_log2fold_treatment_control, data=DEXSeq_rMATS_SE_unique))
+legend('topleft', legend = paste('r = ',
+       round(cor(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
+                 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference), 2), sep = ""),
+       bty='n', bg='white', cex= 1)
+```
+
+### rMATS_SE vs SUPPA
+
+```{r}
+rMATS_SE_Tx <- rMATS2Tx(rMATS_SEexon)
+rMATS_SE_SUPPA_L <-length(intersect(rMATS_SE_Tx, suppa$transcript))
+
+length(suppa$transcript)
+length(rMATS_SE_Tx)
+rMATS_SE_SUPPA_L
+```
+
+### rMATS_SE_DEXSeq vs SUPPA
+
+```{r}
+DEXSeq_rMATS_SE_SUPPAall <- findOverlap3(DEXSeq_rMATS_SE)
+DEXSeq_rMATS_SE_SUPPA <- DEXSeq_rMATS_SE_SUPPAall[[1]]
+DEXSeq_rMATS_SE_transcripts <- DEXSeq_rMATS_SE_SUPPAall[[2]]
+DEXSeq_rMATS_SE_SUPPA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_SE_SUPPA$SUPPA_overlap), ","))))
+
+length(suppa$transcript)
+length(DEXSeq_rMATS_SE_transcripts)
+DEXSeq_rMATS_SE_SUPPA_L
+```
+
+### rMATS_A5SS vs DEXSeq
+
+How many exons overlap
+
+```{r}
+DEXSeq_rMATS_A5SS <- findOverlap2(rMATS_A5SSexon, 'rMATS_A5SS')
+DEXSeq_rMATS_A5SS_L <- length(unique(DEXSeq_rMATS_A5SS[,'rMATS_A5SS_exon_long']))
+rMATS_A5SS_L <- dim(unique(rMATS_A5SS[,c("Chr", "exon_long")]))[1]
+
+rMATS_A5SS_L
+DEXSeq_rMATS_A5SS_L
+```
+
+Relationship in results
+
+```{r}
+plot(DEXSeq_rMATS_A5SS$DEXSeq_log2fold_treatment_control,
+     DEXSeq_rMATS_A5SS$rMATS_A5SS_IncLevelDifference,
+     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="A5SS")
+```
+
+### rMATS_A5SS vs SUPPA
+
+```{r}
+rMATS_A5SS_Tx <- rMATS2Tx(rMATS_A5SSexon)
+rMATS_A5SS_SUPPA_L <- length(intersect(rMATS_A5SS_Tx, suppa$transcript))
+
+length(suppa$transcript)
+length(rMATS_A5SS_Tx)
+rMATS_A5SS_SUPPA_L
+```
+
+### rMATS_A5SS_DEXSeq vs SUPPA
+
+```{r}
+DEXSeq_rMATS_A5SS_SUPPAall <- findOverlap3(DEXSeq_rMATS_A5SS)
+DEXSeq_rMATS_A5SS_SUPPA <- DEXSeq_rMATS_A5SS_SUPPAall[[1]]
+DEXSeq_rMATS_A5SS_transcripts <- DEXSeq_rMATS_A5SS_SUPPAall[[2]]
+DEXSeq_rMATS_A5SS_SUPPA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_A5SS_SUPPA$SUPPA_overlap), ","))))
+length(suppa$transcript)
+length(DEXSeq_rMATS_A5SS_transcripts)
+DEXSeq_rMATS_A5SS_SUPPA_L
+```
+
+### rMATS_A3SS vs DEXSeq
+
+How many exons overlap
+
+```{r}
+DEXSeq_rMATS_A3SS <- findOverlap2(rMATS_A5SSexon, 'rMATS_A3SS')
+DEXSeq_rMATS_A3SS_L <- length(unique(DEXSeq_rMATS_A3SS[,'rMATS_A3SS_exon_long']))
+rMATS_A3SS_L <- dim(unique(rMATS_A3SS[,c("Chr", "exon_long")]))[1]
+
+rMATS_A3SS_L
+DEXSeq_rMATS_A3SS_L
+```
+
+Relationship in results
+
+```{r}
+plot(DEXSeq_rMATS_A3SS$DEXSeq_log2fold_treatment_control,
+     DEXSeq_rMATS_A3SS$rMATS_A3SS_IncLevelDifference,
+     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="A3SS")
+```
+
+### rMATS_A3SS vs SUPPA
+
+```{r}
+rMATS_A3SS_Tx <- rMATS2Tx(rMATS_A3SSexon)
+rMATS_A3SS_SUPPA_L <- length(intersect(rMATS_A3SS_Tx, suppa$transcript))
+
+length(suppa$transcript)
+length(rMATS_A3SS_Tx)
+rMATS_A3SS_SUPPA_L
+```
+
+### rMATS_A3SS_DEXSeq vs SUPPA
+
+```{r}
+DEXSeq_rMATS_A3SS_SUPPAall <- findOverlap3(DEXSeq_rMATS_A3SS)
+DEXSeq_rMATS_A3SS_SUPPA <- DEXSeq_rMATS_A3SS_SUPPAall[[1]]
+DEXSeq_rMATS_A3SS_transcripts <- DEXSeq_rMATS_A3SS_SUPPAall[[2]]
+DEXSeq_rMATS_A3SS_SUPPA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_A3SS_SUPPA$SUPPA_overlap), ","))))
+length(suppa$transcript)
+length(DEXSeq_rMATS_A3SS_transcripts)
+DEXSeq_rMATS_A3SS_SUPPA_L
+```
+
+### rMATS_MXE vs DEXSeq
+
+How many exons overlap 
+
+```{r}
+# exon 1
+DEXSeq_rMATS_1_MXE <- findOverlap2(rMATS_MXE_1exon, 'rMATS_MXE')
+DEXSeq_rMATS_2_MXE <- findOverlap2(rMATS_MXE_2exon, 'rMATS_MXE')
+DEXSeq_rMATS_1_MXE$DEXSeq_transcripts <- NULL
+DEXSeq_rMATS_1_MXE$rMATS_MXE_start <- NULL
+DEXSeq_rMATS_1_MXE$rMATS_MXE_end <- NULL
+DEXSeq_rMATS_2_MXE$rMATS_MXE_start <- NULL
+DEXSeq_rMATS_2_MXE$rMATS_MXE_end <- NULL
+# merge exon 1 and 2
+DEXSeq_rMATS_MXE <- merge(DEXSeq_rMATS_1_MXE, DEXSeq_rMATS_2_MXE, all=T)
+DEXSeq_rMATS_MXE <- DEXSeq_rMATS_MXE[order(DEXSeq_rMATS_MXE$DEXSeq_chr,
+                                             DEXSeq_rMATS_MXE$DEXSeq_start,
+                                             DEXSeq_rMATS_MXE$DEXSeq_end),]
+DEXSeq_rMATS_MXE_L <- dim(unique(DEXSeq_rMATS_MXE[,c('rMATS_MXE_exon_1', 'rMATS_MXE_exon_2')]))[1]
+rMATS_MXE_L <- dim(unique(rMATS_MXE[,c("Chr", "exon_1", "exon_2")]))[1]
+
+rMATS_MXE_L
+DEXSeq_rMATS_MXE_L 
+```
+
+### rMATS_MXE vs SUPPA
+
+```{r}
+rMATS_MXE_1_Tx <- rMATS2Tx(rMATS_MXE_1exon)
+rMATS_MXE_2_Tx <- rMATS2Tx(rMATS_MXE_2exon)
+rMATS_MXE_Tx <- unique(c(rMATS_MXE_1_Tx, rMATS_MXE_2_Tx))
+rMATS_MXE_SUPPA_L <- length(intersect(rMATS_MXE_Tx, suppa$transcript))
+
+length(suppa$transcript)
+length(rMATS_MXE_Tx)
+rMATS_MXE_SUPPA_L
+```
+
+### rMATS_MXE_DEXSeq vs SUPPA
+
+```{r}
+DEXSeq_rMATS_MXE_SUPPAall <- findOverlap3(DEXSeq_rMATS_MXE)
+DEXSeq_rMATS_MXE_SUPPA <- DEXSeq_rMATS_MXE_SUPPAall[[1]]
+DEXSeq_rMATS_MXE_transcripts <- DEXSeq_rMATS_MXE_SUPPAall[[2]]
+DEXSeq_rMATS_MXE_SUPPA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_MXE_SUPPA$SUPPA_overlap), ","))))
+length(suppa$transcript)
+length(DEXSeq_rMATS_MXE_transcripts)
+DEXSeq_rMATS_MXE_SUPPA_L
+```
+
+### rMATS_RI vs DEXSeq
+
+How many exons overlap
+
+```{r}
+DEXSeq_rMATS_RI <- findOverlap2(rMATS_RIexon, 'rMATS_RI')
+DEXSeq_rMATS_RI_L <- length(unique(DEXSeq_rMATS_RI[,'rMATS_RI_exon_ir']))
+rMATS_RI_L <- dim(unique(rMATS_RI[,c("Chr", "exon_ir")]))[1]
+
+rMATS_RI_L
+DEXSeq_rMATS_RI_L
+```
+
+There is no exact match in the start and end.
+
+```{r}
+sum(DEXSeq_rMATS_RI$DEXSeq_start==DEXSeq_rMATS_RI$rMATS_RI_start &
+    DEXSeq_rMATS_RI$DEXSeq_end==DEXSeq_rMATS_RI$rMATS_RI_end)
+which(DEXSeq_rMATS_RI$DEXSeq_end==DEXSeq_rMATS_RI$rMATS_RI_end)
+which(DEXSeq_rMATS_RI$DEXSeq_start==DEXSeq_rMATS_RI$rMATS_RI_start)
+```
+
+Relationship in results
+
+```{r}
+plot(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
+     DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference,
+     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="RI")
+```
+
+### rMATS_RI vs SUPPA
+
+```{r}
+rMATS_RI_Tx <- rMATS2Tx(rMATS_RIexon)
+rMATS_RI_SUPPA_L <- length(intersect(rMATS_RI_Tx, suppa$transcript))
+
+length(suppa$transcript)
+length(rMATS_RI_Tx)
+rMATS_RI_SUPPA_L
+```
+
+### rMATS_RI_DEXSeq vs SUPPA
+
+```{r}
+DEXSeq_rMATS_RI_SUPPAall <- findOverlap3(DEXSeq_rMATS_RI)
+DEXSeq_rMATS_RI_SUPPA <- DEXSeq_rMATS_RI_SUPPAall[[1]]
+DEXSeq_rMATS_RI_transcripts <- DEXSeq_rMATS_RI_SUPPAall[[2]]
+DEXSeq_rMATS_RI_SUPPA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_RI_SUPPA$SUPPA_overlap), ","))))-2
+length(DEXSeq_rMATS_RI_transcripts)
+DEXSeq_rMATS_RI_SUPPA_L
+```
+
+## Venn diagramns of overlap
+
+Get DEXSeq_SUPPA overlap
+
+```{r}
+dexseq_sing_transcrips <- dexseq_sing
+colnames(dexseq_sing_transcrips)[24] <- 'DEXSeq_transcripts'
+DEXSeq_SUPPAall <- findOverlap3(dexseq_sing_transcrips)
+DEXSeq_SUPPA_L <- length(unique(DEXSeq_SUPPAall[[1]]$SUPPA_overlap))
+```
+
+Plot Venn rMATS separately
+
+```{r, message=F, error=F, fig.width=12}
+colors <- brewer.pal(3, 'Accent')
+
+DEXSeq_L <- dim(dexseq_sing)[1]
+SUPPA <- length(suppa$transcript)
+
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+pushViewport(plotViewport(layout=grid.layout(1, 5)))
+for (i in c(1:5)){
+   #i <- 4
+   t <- paste('rMATS_', Jtype[i], sep="")
+   rMATS_L <- get(paste(t, '_L', sep=""))
+   DEXSeq_rMATS_L <- get(paste('DEXSeq_', t, '_L', sep=""))
+   rMATS_SUPPA_L <- get(paste(t, '_SUPPA_L', sep=""))
+   DEXSeq_rMATS_SUPPA_L <- get(paste('DEXSeq_', t, '_SUPPA_L', sep=""))
+   
+   pushViewport(plotViewport(layout.pos.col=i))
+   draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=SUPPA,
+      			  n12=DEXSeq_rMATS_L, n23=rMATS_SUPPA_L,
+      			  n13=DEXSeq_SUPPA_L, n123=DEXSeq_rMATS_SUPPA_L,
+      			  category=c("", t, "SUPPA"),
+      			  fill=colors)
+   popViewport()
+}
+```
+
+Plot Venn rMATS all togather
+
+```{r, message=F, error=F}
+rMATS_L <- sum(rMATS_A3SS_L, rMATS_A5SS_L, rMATS_SE_L, rMATS_RI_L, rMATS_MXE_L)
+
+DEXSeq_rMATS_L <- sum(DEXSeq_rMATS_A3SS_L, DEXSeq_rMATS_A5SS_L,
+                      DEXSeq_rMATS_SE_L, DEXSeq_rMATS_RI_L,
+                      DEXSeq_rMATS_MXE_L) 
+rMATS_SUPPA_L <- sum(rMATS_A3SS_SUPPA_L, rMATS_A5SS_SUPPA_L,
+                     rMATS_SE_SUPPA_L, rMATS_RI_SUPPA_L,
+                     rMATS_MXE_SUPPA_L)
+DEXSeq_rMATS_SUPPA_L <- sum(DEXSeq_rMATS_A3SS_SUPPA_L, DEXSeq_rMATS_A5SS_SUPPA_L,
+                      DEXSeq_rMATS_SE_SUPPA_L, DEXSeq_rMATS_RI_SUPPA_L,
+                      DEXSeq_rMATS_MXE_SUPPA_L)
+pushViewport(plotViewport(layout=grid.layout(1, 1)))
+pushViewport(plotViewport(layout.pos.col=1))
+draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=SUPPA,
+      			  n12=DEXSeq_rMATS_L, n23=rMATS_SUPPA_L,
+      			  n13=DEXSeq_SUPPA_L, n123=DEXSeq_rMATS_SUPPA_L,
+      			  category=c("DEXSeq", "rMATS", "SUPPA"),
+      			  fill=colors)
+popViewport()
+```
+
+## Write overlaps
+
+```{r}
+dir <- 'results/tables/splicing_overlap_exon/'
+dir.create(dir, showWarnings = F)
+
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+for (i in Jtype){
+   dname <- paste('DEXSeq_rMATS_', i, '_SUPPA', sep = "")
+   write.table(get(dname), paste(dir, dname,  '_overlap_exon.csv', sep=""),
+            row.names = F, sep = '\t')
+}
+```

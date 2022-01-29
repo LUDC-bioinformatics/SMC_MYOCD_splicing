@@ -146,6 +146,14 @@ the TPMs in both samples always add up to the same number (so the
 denominator required to calculate the proportions is the same, 
 regardless of what sample you are looking at.)
 
+Optionally, I run the enrichment analysis in the DE genes with *clusterProfiler* but if
+we decide that we need itm I would re-do it with [WebGestalt](http://www.webgestalt.org/)
+as I have doe for DEXSeq results below.
+
+```{bash}
+R -e 'rmarkdown::render("code/clusterProfiler.Rmd", output_dir="results/reports/")'
+```
+
 ## Splicing analyses
 
 ### Differential exon usage
@@ -171,20 +179,19 @@ Results:
 
 - `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correpondance between the DEXSeq bins and real exons.
 
+#### Enrichment
 
-Enrichment
-
-Performed with [clusterProfiler](https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html):
+Performed with [WebGestalt](http://www.webgestalt.org/):
 
 ```{bash}
-R -e 'rmarkdown::render("code/DEXSeq_GO.Rmd", output_dir="results/reports/")'
+mkdir -p results/reports/WebGestaltR/
+R -e 'rmarkdown::render("code/WebGestaltR.Rmd", output_dir="results/reports/WebGestaltR/")'
 ```
 
 Results:
 
-- `results/reports/DEXSeq_GO.html` - report describing the analysis and figures.
+- `results/reports/WebGestaltR/` - report describing the analysis, figures and tables.
 
-- `results/tables/GO/DEXSeq/` - tables.
 
 ### Splicing events analysis
 
@@ -295,17 +302,29 @@ I also check how many genes that show alternative splicing overlap betweem analy
 (FDR: DEXSeq=0.01, rMAT=0.05,  SUPPA=0.05):
 
 ```{bash}
-R -e 'rmarkdown::render("code/splicing_overlap.Rmd", output_dir="results/reports/")'
+R -e 'rmarkdown::render("code/splicing_gene_overlap.Rmd", output_dir="results/reports/")'
 ```
 
 Results:
 
-   - `results/tables/rMATS_DEXSeq_SUPPA_overlap.csv` - genes that are significant in all three analyses.
+   - `results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_gene_overlap.csv` - genes that are significant in all three analyses.
    
-   - `results/tables/rMATS_DEXSeq_SUPPA_atleast2overlap.csv` - genes that are significant in at
+   - `results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_atleast2genes_overlap.csv` - genes that are significant in at
       least two analyses.
    
-   - `results/figures/rmats_dexseq_suppa.pdf` - Venn Diagram of overlap between the three analyses.
+   - `results/figures/rmats_dexseq_suppa_gene_overlap.pdf` - Venn Diagram of overlap between the three analyses.
+
+In addition, I also check if there are exact exons matches in the results.
+
+```{bash}
+R -e 'rmarkdown::render("code/splicing_exon_overlap.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+   - `results/tables/splicing_overlap_exon/` - results for DEXSeq overlap with rMATS and SUPPA based on exon overlaps.
+   
+*Note, only the comparison DEXSeq bins to rMATS exons is reliable here. SUPPA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.*
 
 ### Results interpretation
 
