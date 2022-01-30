@@ -25,6 +25,7 @@ library(ggplot2)
 library(mygene)
 library(sm)
 library(reshape2)
+library(EnhancedVolcano)
 ```
 
 ## Data
@@ -275,7 +276,7 @@ rownames(res_tpm_mean_annot) <- res_tpm_mean_annot$gene
 
 ### Plot significant genes
 
-Top 30 genes
+#### Top 30 genes
 
 ```{r, fig.width=10, fig.height=5, message=FALSE}
 # Get top genes
@@ -308,6 +309,56 @@ ggplot(top_genes_norm) +
         theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     theme(plot.title=element_text(hjust=0.5))
+```
+
+#### Enhanced Volcano plot:
+
+Select genes to add lanbles to points:
+
+```{r}
+gene2lable <- which(
+              c(
+                -log10(res_tpm_mean_annot$padj)>180 |
+                res_tpm_mean_annot$log2FoldChange>7 | res_tpm_mean_annot$log2FoldChange<c(-7)
+                ) |
+              c(
+                c(-log10(res_tpm_mean_annot$padj)>100 & -log10(res_tpm_mean_annot$padj)<180) &
+                c(res_tpm_mean_annot$log2FoldChange>3 | res_tpm_mean_annot$log2FoldChange<c(-4))
+                ) |
+              c(
+                c(-log10(res_tpm_mean_annot$padj)>30 & -log10(res_tpm_mean_annot$padj)<100) &
+                c(res_tpm_mean_annot$log2FoldChange>5 | res_tpm_mean_annot$log2FoldChange<c(-5.5))
+                )
+              )
+res_tpm_mean_annot_sign <- res_tpm_mean_annot[gene2lable,]
+dim(res_tpm_mean_annot_sign)[1]
+```
+
+Plot
+
+```{r}
+pdf('results/figures/DESeq_volcanoplot.pdf', width = 6, height = 5)
+EnhancedVolcano(res_tpm_mean_annot,
+    lab = res_tpm_mean_annot$symbol,
+    selectLab=res_tpm_mean_annot_sign$symbol,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    title = NULL, subtitle = NULL, caption = NULL,
+    pCutoff = 10e-5,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 2.0,
+    labvjust = 1.5, labhjust = 0.5,
+    axisLabSize = 12,
+    legendLabSize = 10,
+    legendIconSize = 2,
+    labFace=1,
+    legend = c("NS","Log2 FC","P","P & Log2 FC"),
+    legendLabels = c('Not sig.', expression(Log[2]~FC~'> 1'),
+                      "p < 10e-5", expression('p-value'~'&'~log[2]~FC))
+    ) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+              panel.background = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
 ```
 
 ## Positive control genes
