@@ -1,5 +1,5 @@
 ---
-title: "Myocardin splicing: overlap between DEXSeq rMATS SUPPA results"
+title: "Myocardin splicing: overlap between DEXSeq rMATS ISA results"
 author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
@@ -24,6 +24,11 @@ library(GenomicFeatures)
 library(GenomicRanges)
 library(VennDiagram)
 library(RColorBrewer)
+library(mygene)
+dir.fig <- 'results/figures/rMATS_DEXSeq_ISA_overlap'
+dir.table <- 'results/tables/rMATS_DEXSeq_ISA_overlap'
+dir.create(dir.fig, showWarnings = F)
+dir.create(dir.table, showWarnings = F)
 ```
 
 ## Functions
@@ -32,8 +37,9 @@ library(RColorBrewer)
 getrMATS <- function(type, target){
    # type <- 'A5SS'
    # target <- 'exon_long'
-   rMATS <- read.table(paste('results/tables/rMATS/rMATS_sign_' , type, '.csv', sep=""),
+   rMATS <- read.table(paste('results/tables/rMATS/rMATS_all_' , type, '.csv', sep=""),
                              header = T, sep = '\t')
+   rMATS <- rMATS[which(rMATS$FDR<=0.05),]
    rMATS_coord <- data.frame(do.call('rbind', strsplit(as.character(rMATS[,target]),
                                                     '-', fixed=TRUE)))
    start <- paste(target, '_start', sep = "")
@@ -83,23 +89,23 @@ findOverlap3 <- function(findOverlap2D){
    #findOverlap2D <- dexseq_sing_transcrips
    findOverlap2D_transcripts <- unique(unlist(strsplit(gsub('c\\(|\\)|,', '',
                                                  findOverlap2D$DEXSeq_transcripts), " ")))
-   findOverlap2D_SUPPA_transcripts <- intersect(suppa$transcript, findOverlap2D_transcripts)
+   findOverlap2D_ISA_transcripts <- intersect(ISA$transcript, findOverlap2D_transcripts)
    
-   # add SUPPA column to the results overlap
-   findOverlap2D_SUPPA <- findOverlap2D
-   findOverlap2D_SUPPA$SUPPA_overlap <- NA
-   for (i in c(1:length(findOverlap2D_SUPPA$DEXSeq_transcripts))){
+   # add ISA column to the results overlap
+   findOverlap2D_ISA <- findOverlap2D
+   findOverlap2D_ISA$ISA_overlap <- NA
+   for (i in c(1:length(findOverlap2D_ISA$DEXSeq_transcripts))){
       #i <- 16
       transc_list <- unique(unlist(strsplit(gsub('c\\(|\\)|,', '',
-                findOverlap2D_SUPPA$DEXSeq_transcripts[i]), " ")))
-      transc_list_SUPPA <- intersect(findOverlap2D_SUPPA_transcripts, transc_list)
-      if (!identical(transc_list_SUPPA, character(0))){
-         findOverlap2D_SUPPA$SUPPA_overlap[i] <- paste(transc_list_SUPPA, collapse = ",")
+                findOverlap2D_ISA$DEXSeq_transcripts[i]), " ")))
+      transc_list_ISA <- intersect(findOverlap2D_ISA_transcripts, transc_list)
+      if (!identical(transc_list_ISA, character(0))){
+         findOverlap2D_ISA$ISA_overlap[i] <- paste(transc_list_ISA, collapse = ",")
       }
    }
-   findOverlap2D_SUPPA <- findOverlap2D_SUPPA[,c(setdiff(colnames(findOverlap2D_SUPPA),
+   findOverlap2D_ISA <- findOverlap2D_ISA[,c(setdiff(colnames(findOverlap2D_ISA),
                                                'DEXSeq_transcripts'), 'DEXSeq_transcripts')]
-   return(list(findOverlap2D_SUPPA,
+   return(list(findOverlap2D_ISA,
                findOverlap2D_transcripts))
 }
 
@@ -124,7 +130,6 @@ transcriptDb <- makeTxDbFromGFF("data/reference/gencode.v35.primary_assembly.ann
                                 format="gtf")
 transcripts <- unlist(transcriptsBy(transcriptDb, "exon", use.names=TRUE))
 ```
-
 
 ### exon_id
 
@@ -198,14 +203,19 @@ rMATS_RI <- rMATS_RIall[[1]]
 rMATS_RIexon <- rMATS_RIall[[2]]
 ```
 
-### SUPPA
+### Isoform Switch Analysis
+
+Isoform Switch Analysis (ISA)
 
 ```{r}
-suppa <- read.table('results/tables/SUPPA/SUPPA_FDR_0.05.csv', header = T, sep = '\t')
-head(suppa)
+# ISA <- read.table('results/tables/ISA/ISA_FDR_0.05.csv', header = T, sep = '\t')
+# head(ISA)
+ISA <- read.table('results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis.csv', header = T, sep = '\t')
+ISA <- ISA[ISA$padj<=0.05, ]
+colnames(ISA)[1] <- 'transcript'
 ```
 
-## Find overlap
+## Find exon overlap
 
 ### rMATS_SE vs DEXSeq
 
@@ -233,35 +243,37 @@ plot(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
      DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference,
      xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="SE")
 abline(lm(rMATS_SE_IncLevelDifference~DEXSeq_log2fold_treatment_control, data=DEXSeq_rMATS_SE_unique))
-legend('topleft', legend = paste('r = ',
+legend('topleft', legend = paste('rho = ',
        round(cor(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
-                 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference), 2), sep = ""),
+                 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference, method = "spearman"), 2), sep = ""),
        bty='n', bg='white', cex= 1)
+cor.test(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
+                 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference, method = "spearman")
 ```
 
-### rMATS_SE vs SUPPA
+### rMATS_SE vs ISA
 
 ```{r}
 rMATS_SE_Tx <- rMATS2Tx(rMATS_SEexon)
-rMATS_SE_SUPPA_L <-length(intersect(rMATS_SE_Tx, suppa$transcript))
+rMATS_SE_ISA_L <-length(intersect(rMATS_SE_Tx, ISA$transcript))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(rMATS_SE_Tx)
-rMATS_SE_SUPPA_L
+rMATS_SE_ISA_L
 ```
 
-### rMATS_SE_DEXSeq vs SUPPA
+### rMATS_SE_DEXSeq vs ISA
 
 ```{r}
-DEXSeq_rMATS_SE_SUPPAall <- findOverlap3(DEXSeq_rMATS_SE)
-DEXSeq_rMATS_SE_SUPPA <- DEXSeq_rMATS_SE_SUPPAall[[1]]
-DEXSeq_rMATS_SE_transcripts <- DEXSeq_rMATS_SE_SUPPAall[[2]]
-DEXSeq_rMATS_SE_SUPPA_L <- length(unique(unlist(strsplit(as.character(
-                                   DEXSeq_rMATS_SE_SUPPA$SUPPA_overlap), ","))))
+DEXSeq_rMATS_SE_ISAall <- findOverlap3(DEXSeq_rMATS_SE)
+DEXSeq_rMATS_SE_ISA <- DEXSeq_rMATS_SE_ISAall[[1]]
+DEXSeq_rMATS_SE_transcripts <- DEXSeq_rMATS_SE_ISAall[[2]]
+DEXSeq_rMATS_SE_ISA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_SE_ISA$ISA_overlap), ","))))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(DEXSeq_rMATS_SE_transcripts)
-DEXSeq_rMATS_SE_SUPPA_L
+DEXSeq_rMATS_SE_ISA_L
 ```
 
 ### rMATS_A5SS vs DEXSeq
@@ -285,28 +297,28 @@ plot(DEXSeq_rMATS_A5SS$DEXSeq_log2fold_treatment_control,
      xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="A5SS")
 ```
 
-### rMATS_A5SS vs SUPPA
+### rMATS_A5SS vs ISA
 
 ```{r}
 rMATS_A5SS_Tx <- rMATS2Tx(rMATS_A5SSexon)
-rMATS_A5SS_SUPPA_L <- length(intersect(rMATS_A5SS_Tx, suppa$transcript))
+rMATS_A5SS_ISA_L <- length(intersect(rMATS_A5SS_Tx, ISA$transcript))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(rMATS_A5SS_Tx)
-rMATS_A5SS_SUPPA_L
+rMATS_A5SS_ISA_L
 ```
 
-### rMATS_A5SS_DEXSeq vs SUPPA
+### rMATS_A5SS_DEXSeq vs ISA
 
 ```{r}
-DEXSeq_rMATS_A5SS_SUPPAall <- findOverlap3(DEXSeq_rMATS_A5SS)
-DEXSeq_rMATS_A5SS_SUPPA <- DEXSeq_rMATS_A5SS_SUPPAall[[1]]
-DEXSeq_rMATS_A5SS_transcripts <- DEXSeq_rMATS_A5SS_SUPPAall[[2]]
-DEXSeq_rMATS_A5SS_SUPPA_L <- length(unique(unlist(strsplit(as.character(
-                                   DEXSeq_rMATS_A5SS_SUPPA$SUPPA_overlap), ","))))
-length(suppa$transcript)
+DEXSeq_rMATS_A5SS_ISAall <- findOverlap3(DEXSeq_rMATS_A5SS)
+DEXSeq_rMATS_A5SS_ISA <- DEXSeq_rMATS_A5SS_ISAall[[1]]
+DEXSeq_rMATS_A5SS_transcripts <- DEXSeq_rMATS_A5SS_ISAall[[2]]
+DEXSeq_rMATS_A5SS_ISA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_A5SS_ISA$ISA_overlap), ","))))
+length(ISA$transcript)
 length(DEXSeq_rMATS_A5SS_transcripts)
-DEXSeq_rMATS_A5SS_SUPPA_L
+DEXSeq_rMATS_A5SS_ISA_L
 ```
 
 ### rMATS_A3SS vs DEXSeq
@@ -330,28 +342,28 @@ plot(DEXSeq_rMATS_A3SS$DEXSeq_log2fold_treatment_control,
      xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="A3SS")
 ```
 
-### rMATS_A3SS vs SUPPA
+### rMATS_A3SS vs ISA
 
 ```{r}
 rMATS_A3SS_Tx <- rMATS2Tx(rMATS_A3SSexon)
-rMATS_A3SS_SUPPA_L <- length(intersect(rMATS_A3SS_Tx, suppa$transcript))
+rMATS_A3SS_ISA_L <- length(intersect(rMATS_A3SS_Tx, ISA$transcript))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(rMATS_A3SS_Tx)
-rMATS_A3SS_SUPPA_L
+rMATS_A3SS_ISA_L
 ```
 
-### rMATS_A3SS_DEXSeq vs SUPPA
+### rMATS_A3SS_DEXSeq vs ISA
 
 ```{r}
-DEXSeq_rMATS_A3SS_SUPPAall <- findOverlap3(DEXSeq_rMATS_A3SS)
-DEXSeq_rMATS_A3SS_SUPPA <- DEXSeq_rMATS_A3SS_SUPPAall[[1]]
-DEXSeq_rMATS_A3SS_transcripts <- DEXSeq_rMATS_A3SS_SUPPAall[[2]]
-DEXSeq_rMATS_A3SS_SUPPA_L <- length(unique(unlist(strsplit(as.character(
-                                   DEXSeq_rMATS_A3SS_SUPPA$SUPPA_overlap), ","))))
-length(suppa$transcript)
+DEXSeq_rMATS_A3SS_ISAall <- findOverlap3(DEXSeq_rMATS_A3SS)
+DEXSeq_rMATS_A3SS_ISA <- DEXSeq_rMATS_A3SS_ISAall[[1]]
+DEXSeq_rMATS_A3SS_transcripts <- DEXSeq_rMATS_A3SS_ISAall[[2]]
+DEXSeq_rMATS_A3SS_ISA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_A3SS_ISA$ISA_overlap), ","))))
+length(ISA$transcript)
 length(DEXSeq_rMATS_A3SS_transcripts)
-DEXSeq_rMATS_A3SS_SUPPA_L
+DEXSeq_rMATS_A3SS_ISA_L
 ```
 
 ### rMATS_MXE vs DEXSeq
@@ -379,31 +391,32 @@ rMATS_MXE_L
 DEXSeq_rMATS_MXE_L 
 ```
 
-### rMATS_MXE vs SUPPA
+### rMATS_MXE vs ISA
 
 ```{r}
 rMATS_MXE_1_Tx <- rMATS2Tx(rMATS_MXE_1exon)
 rMATS_MXE_2_Tx <- rMATS2Tx(rMATS_MXE_2exon)
 rMATS_MXE_Tx <- unique(c(rMATS_MXE_1_Tx, rMATS_MXE_2_Tx))
-rMATS_MXE_SUPPA_L <- length(intersect(rMATS_MXE_Tx, suppa$transcript))
+rMATS_MXE_ISA_L <- length(intersect(rMATS_MXE_Tx, ISA$transcript))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(rMATS_MXE_Tx)
-rMATS_MXE_SUPPA_L
+rMATS_MXE_ISA_L
 ```
 
-### rMATS_MXE_DEXSeq vs SUPPA
+### rMATS_MXE_DEXSeq vs ISA
 
 ```{r}
-DEXSeq_rMATS_MXE_SUPPAall <- findOverlap3(DEXSeq_rMATS_MXE)
-DEXSeq_rMATS_MXE_SUPPA <- DEXSeq_rMATS_MXE_SUPPAall[[1]]
-DEXSeq_rMATS_MXE_transcripts <- DEXSeq_rMATS_MXE_SUPPAall[[2]]
-DEXSeq_rMATS_MXE_SUPPA_L <- length(unique(unlist(strsplit(as.character(
-                                   DEXSeq_rMATS_MXE_SUPPA$SUPPA_overlap), ","))))
-length(suppa$transcript)
+DEXSeq_rMATS_MXE_ISAall <- findOverlap3(DEXSeq_rMATS_MXE)
+DEXSeq_rMATS_MXE_ISA <- DEXSeq_rMATS_MXE_ISAall[[1]]
+DEXSeq_rMATS_MXE_transcripts <- DEXSeq_rMATS_MXE_ISAall[[2]]
+DEXSeq_rMATS_MXE_ISA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_MXE_ISA$ISA_overlap), ","))))
+length(ISA$transcript)
 length(DEXSeq_rMATS_MXE_transcripts)
-DEXSeq_rMATS_MXE_SUPPA_L
+DEXSeq_rMATS_MXE_ISA_L
 ```
+
 
 ### rMATS_RI vs DEXSeq
 
@@ -433,95 +446,91 @@ Relationship in results
 plot(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
      DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference,
      xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="RI")
+
+abline(lm(rMATS_RI_IncLevelDifference~DEXSeq_log2fold_treatment_control, data=DEXSeq_rMATS_RI))
+legend('topleft', legend = paste('rho = ',
+       round(cor(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
+                 DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference, method = "spearman"), 2), sep = ""),
+       bty='n', bg='white', cex= 1)
+cor.test(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
+                 DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference, method = "spearman")
 ```
 
-### rMATS_RI vs SUPPA
+### rMATS_RI vs ISA
 
 ```{r}
 rMATS_RI_Tx <- rMATS2Tx(rMATS_RIexon)
-rMATS_RI_SUPPA_L <- length(intersect(rMATS_RI_Tx, suppa$transcript))
+rMATS_RI_ISA_L <- length(intersect(rMATS_RI_Tx, ISA$transcript))
 
-length(suppa$transcript)
+length(ISA$transcript)
 length(rMATS_RI_Tx)
-rMATS_RI_SUPPA_L
+rMATS_RI_ISA_L
 ```
 
-### rMATS_RI_DEXSeq vs SUPPA
+### rMATS_RI_DEXSeq vs ISA
 
 ```{r}
-DEXSeq_rMATS_RI_SUPPAall <- findOverlap3(DEXSeq_rMATS_RI)
-DEXSeq_rMATS_RI_SUPPA <- DEXSeq_rMATS_RI_SUPPAall[[1]]
-DEXSeq_rMATS_RI_transcripts <- DEXSeq_rMATS_RI_SUPPAall[[2]]
-DEXSeq_rMATS_RI_SUPPA_L <- length(unique(unlist(strsplit(as.character(
-                                   DEXSeq_rMATS_RI_SUPPA$SUPPA_overlap), ","))))-2
+DEXSeq_rMATS_RI_ISAall <- findOverlap3(DEXSeq_rMATS_RI)
+DEXSeq_rMATS_RI_ISA <- DEXSeq_rMATS_RI_ISAall[[1]]
+DEXSeq_rMATS_RI_transcripts <- DEXSeq_rMATS_RI_ISAall[[2]]
+DEXSeq_rMATS_RI_ISA_L <- length(unique(unlist(strsplit(as.character(
+                                   DEXSeq_rMATS_RI_ISA$ISA_overlap), ","))))-2
 length(DEXSeq_rMATS_RI_transcripts)
-DEXSeq_rMATS_RI_SUPPA_L
+DEXSeq_rMATS_RI_ISA_L
 ```
 
-## Venn diagramns of overlap
+## Venn diagramns of exon overlap
 
-Get DEXSeq_SUPPA overlap
+Get DEXSeq_ISA overlap
 
 ```{r}
 dexseq_sing_transcrips <- dexseq_sing
 colnames(dexseq_sing_transcrips)[24] <- 'DEXSeq_transcripts'
-DEXSeq_SUPPAall <- findOverlap3(dexseq_sing_transcrips)
-DEXSeq_SUPPA_L <- length(unique(DEXSeq_SUPPAall[[1]]$SUPPA_overlap))
+DEXSeq_ISAall <- findOverlap3(dexseq_sing_transcrips)
+DEXSeq_ISA_L <- length(unique(DEXSeq_ISAall[[1]]$ISA_overlap))
 ```
 
-Plot Venn rMATS separately
+Plot
 
-```{r, message=F, error=F, fig.width=12}
+```{r, message=F, error=F}
 colors <- brewer.pal(3, 'Accent')
 
 DEXSeq_L <- dim(dexseq_sing)[1]
-SUPPA <- length(suppa$transcript)
 
-Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
-pushViewport(plotViewport(layout=grid.layout(1, 5)))
-for (i in c(1:5)){
-   #i <- 4
-   t <- paste('rMATS_', Jtype[i], sep="")
-   rMATS_L <- get(paste(t, '_L', sep=""))
-   DEXSeq_rMATS_L <- get(paste('DEXSeq_', t, '_L', sep=""))
-   rMATS_SUPPA_L <- get(paste(t, '_SUPPA_L', sep=""))
-   DEXSeq_rMATS_SUPPA_L <- get(paste('DEXSeq_', t, '_SUPPA_L', sep=""))
-   
-   pushViewport(plotViewport(layout.pos.col=i))
-   draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=SUPPA,
-      			  n12=DEXSeq_rMATS_L, n23=rMATS_SUPPA_L,
-      			  n13=DEXSeq_SUPPA_L, n123=DEXSeq_rMATS_SUPPA_L,
-      			  category=c("", t, "SUPPA"),
-      			  fill=colors)
-   popViewport()
-}
-```
+ISA_L <- length(unique(ISA$transcript))
 
-Plot Venn rMATS all togather
-
-```{r, message=F, error=F}
 rMATS_L <- sum(rMATS_A3SS_L, rMATS_A5SS_L, rMATS_SE_L, rMATS_RI_L, rMATS_MXE_L)
 
 DEXSeq_rMATS_L <- sum(DEXSeq_rMATS_A3SS_L, DEXSeq_rMATS_A5SS_L,
                       DEXSeq_rMATS_SE_L, DEXSeq_rMATS_RI_L,
                       DEXSeq_rMATS_MXE_L) 
-rMATS_SUPPA_L <- sum(rMATS_A3SS_SUPPA_L, rMATS_A5SS_SUPPA_L,
-                     rMATS_SE_SUPPA_L, rMATS_RI_SUPPA_L,
-                     rMATS_MXE_SUPPA_L)
-DEXSeq_rMATS_SUPPA_L <- sum(DEXSeq_rMATS_A3SS_SUPPA_L, DEXSeq_rMATS_A5SS_SUPPA_L,
-                      DEXSeq_rMATS_SE_SUPPA_L, DEXSeq_rMATS_RI_SUPPA_L,
-                      DEXSeq_rMATS_MXE_SUPPA_L)
-pushViewport(plotViewport(layout=grid.layout(1, 1)))
-pushViewport(plotViewport(layout.pos.col=1))
-draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=SUPPA,
-      			  n12=DEXSeq_rMATS_L, n23=rMATS_SUPPA_L,
-      			  n13=DEXSeq_SUPPA_L, n123=DEXSeq_rMATS_SUPPA_L,
-      			  category=c("DEXSeq", "rMATS", "SUPPA"),
+rMATS_ISA_L <- sum(rMATS_A3SS_ISA_L, rMATS_A5SS_ISA_L,
+                     rMATS_SE_ISA_L, rMATS_RI_ISA_L,
+                     rMATS_MXE_ISA_L)
+DEXSeq_rMATS_ISA_L <- sum(DEXSeq_rMATS_A3SS_ISA_L, DEXSeq_rMATS_A5SS_ISA_L,
+                      DEXSeq_rMATS_SE_ISA_L, DEXSeq_rMATS_RI_ISA_L,
+                      DEXSeq_rMATS_MXE_ISA_L)
+grid.newpage()
+draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=ISA_L,
+      			  n12=DEXSeq_rMATS_L, n23=rMATS_ISA_L,
+      			  n13=DEXSeq_ISA_L, n123=DEXSeq_rMATS_ISA_L,
+      			  category=c("DEXSeq", "rMATS", "ISA"),
       			  fill=colors)
-popViewport()
 ```
 
-## Write overlaps
+```{r, echo=F}
+pdf(paste(dir.fig, 'rMATS_DEXSeq_ISA_exon_overlap.pdf', sep = "/"),
+    width = 5, height = 5)
+grid.newpage()
+draw.triple.venn(area1=DEXSeq_L, area2=rMATS_L, area3=ISA_L,
+      			  n12=DEXSeq_rMATS_L, n23=rMATS_ISA_L,
+      			  n13=DEXSeq_ISA_L, n123=DEXSeq_rMATS_ISA_L,
+      			  category=c("DEXSeq", "rMATS", "ISA"),
+      			  fill=colors)
+dev.off()
+```
+
+## Write exon overlaps
 
 ```{r}
 dir <- 'results/tables/splicing_overlap_exon/'
@@ -529,8 +538,146 @@ dir.create(dir, showWarnings = F)
 
 Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
 for (i in Jtype){
-   dname <- paste('DEXSeq_rMATS_', i, '_SUPPA', sep = "")
+   dname <- paste('DEXSeq_rMATS_', i, '_ISA', sep = "")
    write.table(get(dname), paste(dir, dname,  '_overlap_exon.csv', sep=""),
             row.names = F, sep = '\t')
 }
+```
+
+## Find gene overlap
+
+### Create gene lists
+
+DEXSeq
+
+```{r}
+dexseq_fdr <- 0.01
+dexseqAll <- read.table('results/tables/DEXSeq/DEXSeq_results_geneFDR.csv',
+                        sep = "\t", header = T, stringsAsFactors=F)
+dexseqSign <- dexseqAll$gene[which(dexseqAll$gene_level_FDR < dexseq_fdr)]
+dexseq_genes <- unique(grep('ENSG', unlist(strsplit(dexseqSign, "[_]|[+]")), value	= T))
+length(dexseq_genes)
+```
+
+rMATS
+
+```{r}
+rmats_fdr <- 0.05
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+rmats <- c()
+for (i in Jtype){
+   #i <- "SE"
+   # d <- read.table(paste('results/tables/rMATS/rMATS_sign_', i, '.csv', sep = ""),
+   #                 header = T, sep = "\t", stringsAsFactors=F)
+   # rmats <- unique(c(rmats, d$GeneID))
+   
+   # to include unfiltered rMATS results
+   d <- read.table(paste('results/tables/rMATS/rMATS_all_', i, '.csv', sep = ""),
+                   header = T, sep = "\t", stringsAsFactors=F)
+   dsign <- as.character(d$GeneID[which(d$FDR < rmats_fdr)])
+   rmats <- unique(c(rmats, dsign))
+}
+length(rmats)
+```
+
+ISA
+
+```{r}
+ISA_fdr <- 0.05
+ISAgenes <- unique(ISA$gene_id[ISA$padj<=ISA_fdr])
+length(ISAgenes)
+```
+
+### Overlap
+
+Plot
+
+```{r}
+vennPlot <- venn.diagram(list(rmats, dexseq_genes, ISAgenes),
+                         NULL,
+                         fill = brewer.pal(3, 'Accent'),
+                         category.names = c('rMATS', 'DEXSeq', 'ISA'))
+grid.draw(vennPlot)
+```
+
+Save to file
+
+```{r}
+venn.diagram(list(rmats, dexseq_genes, ISAgenes),
+             paste(dir.fig, 'rMATS_DEXSeq_ISA_gene_overlap.pdf', sep = "/"),
+             fill = brewer.pal(3, 'Accent'),
+             category.names = c('rMATS', 'DEXSeq', 'ISA'))
+```
+
+```{bash clean_logs, include=FALSE}
+rm VennDiagram*.log results/figures/rMATS_DEXSeq_ISA_overlap/*.log
+```
+
+What proportion is it?
+
+```{r}
+rmats_dexseq <- intersect(rmats, dexseq_genes)
+rmats_isa <- intersect(rmats, ISAgenes)
+isa_dexseq <- intersect(ISAgenes, dexseq_genes)
+rmats_dexseq_isa <- intersect(rmats_dexseq, ISAgenes)
+rmats_dexseq_isa_atleast2 <- unique(c(rmats_dexseq, rmats_isa, isa_dexseq))
+
+length(rmats_dexseq)/length(rmats)
+length(rmats_isa)/length(rmats)
+length(isa_dexseq)/length(ISAgenes)
+length(rmats_dexseq_isa)/length(rmats)
+length(rmats_dexseq_isa_atleast2)
+```
+
+### Annotate the overlap genes
+
+In all 3 methods
+
+```{r, message=FALSE, error=FALSE, eval=TRUE}
+rmats_dexseq_isa_renamed <- gsub("\\..*","", rmats_dexseq_isa)
+
+rmats_dexseq_isa_annotAll <- queryMany(unique(rmats_dexseq_isa_renamed),
+                      scopes='ensembl.gene',
+                      fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+rmats_dexseq_isa_annot <- as.data.frame(rmats_dexseq_isa_annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(rmats_dexseq_isa_annot)[c(1,2)] <- c('gene', 'entrez')
+```
+
+In at least 2 methods
+
+```{r, message=FALSE, error=FALSE, eval=TRUE}
+rmats_dexseq_isa_atleast2_renamed <- gsub("\\..*","", rmats_dexseq_isa_atleast2)
+rmats_dexseq_isa_atleast2_annotAll <- queryMany(unique(rmats_dexseq_isa_atleast2_renamed),
+                      scopes='ensembl.gene',
+                      fields='entrezgene,symbol,name,summary', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+rmats_dexseq_isa_atleast2_annot <- as.data.frame(rmats_dexseq_isa_atleast2_annotAll[,c('query', 'entrezgene','symbol', 'name', 'summary')])
+colnames(rmats_dexseq_isa_atleast2_annot)[c(1,2)] <- c('gene', 'entrez')
+```
+
+### Write results
+
+Genes that occur in at least two tests
+
+```{r}
+write.table(rmats_dexseq_isa_atleast2_annot,
+            paste(dir.table, 'rMATS_DEXSeq_ISA_gene_atleast2overlap.csv', sep = "/"),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+```
+
+Genes that occur in  all three  tests
+
+```{r}
+write.table(rmats_dexseq_isa_annot,
+            paste(dir.table, 'rMATS_DEXSeq_ISA_gene_all3overlap.csv', sep = "/"),
+            quote = T,
+            row.names = F,
+            sep = '\t')
 ```

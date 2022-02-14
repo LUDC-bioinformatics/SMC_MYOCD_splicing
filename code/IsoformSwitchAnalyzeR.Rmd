@@ -1,0 +1,594 @@
+---
+title: "Myocardin splicing: IsoformSwitchAnalyzeR"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+      
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=FALSE, fig.width = 10)
+knitr::opts_knit$set(root.dir = '../')
+``` 
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(IsoformSwitchAnalyzeR)
+library(VennDiagram)
+library(mygene)
+dir.fig <- 'results/figures/IsoformSwitchAnalyzeR'
+dir.table <- 'results/tables/IsoformSwitchAnalyzeR'
+```
+
+## Data
+
+Decompress:
+
+```{bash}
+gunzip results/tables/salmon/*/*.gz
+```
+
+Load:
+
+```{r}
+# samples <- c('CMV1', 'CMV2', 'CMV4', 'CMV5', 'MYO1', 'MYO2', 'MYO4', 'MYO5')
+salmonQuant <- importIsoformExpression(
+  parentDir = "results/tables/salmon/",
+  addIsofomIdAsColumn = TRUE
+)
+```
+
+Compress again:
+
+```{bash}
+gzip results/tables/salmon/*/*.sf
+```
+
+Create *switchAnalyzeRlist*:
+
+```{r}
+myDesign <- data.frame(
+    sampleID = colnames(salmonQuant$abundance)[-1],
+    condition = substr(colnames(salmonQuant$abundance)[-1], 1, 3)
+)
+
+aSwitchList <- importRdata(
+    isoformCountMatrix   = salmonQuant$counts,
+    isoformRepExpression = salmonQuant$abundance,
+    designMatrix         = myDesign,
+    isoformExonAnnoation = "data/reference/gencode.v35.primary_assembly.annotation.gtf",
+    isoformNtFasta       = "data/reference/gencode.v35.transcripts.fa.gz",
+    showProgress = F
+)
+```
+
+## Filter
+
+```{r}
+aSwitchListFiltered <- preFilter(
+    switchAnalyzeRlist = aSwitchList,
+    removeSingleIsoformGenes = TRUE
+)
+```
+
+## Analyses
+
+### DEXSeq
+
+```{r}
+aSwitchListFilteredAnalyzed <- isoformSwitchTestDEXSeq(
+    switchAnalyzeRlist = aSwitchListFiltered,
+    reduceToSwitchingGenes=TRUE
+)
+extractSwitchSummary(aSwitchListFilteredAnalyzed)
+```
+
+### DRIMSeq
+
+```{r, eval=FALSE}
+aSwitchListFilteredDRIMSeq <- isoformSwitchTestDRIMSeq(
+    switchAnalyzeRlist = aSwitchListFiltered,
+    testIntegration='isoform_only',
+    reduceToSwitchingGenes=TRUE
+)
+extractSwitchSummary(aSwitchListFilteredDRIMSeq)
+```
+
+## Sequence Analysis Tools
+
+Extracting Nucleotide and Amino Acid Sequences
+
+```{r}
+tmp.dir <- 'intermediate/IsoformSwitchAnalyzeR'
+dir.create(tmp.dir, showWarnings = F)
+aSwitchListFilteredAnalyzed <- extractSequence(
+    aSwitchListFilteredAnalyzed, 
+    pathToOutput = tmp.dir,
+    filterAALength = T,
+    alsoSplitFastaFile=T
+)
+```
+
+### CPAT
+
+Web-server: [CPAT](http://lilab.research.bcm.edu/)
+
+Run manually by 4 pieces and combine the results.
+
+Results: `intermediate/IsoformSwitchAnalyzeR/cpat.txt`
+
+Load the results
+
+```{r}
+aSwitchListFilteredAnalyzed <- analyzeCPAT(
+    switchAnalyzeRlist   = aSwitchListFilteredAnalyzed,
+    pathToCPATresultFile = "intermediate/IsoformSwitchAnalyzeR/cpat.txt",
+    codingCutoff         = 0.725, # the coding potential cutoff suggested for human
+    removeNoncodinORFs   = TRUE   # because ORF was predicted de novo
+)
+```
+
+### Pfam
+
+Web-server: [HMMER](https://www.ebi.ac.uk/Tools/hmmer/search/phmmer)
+
+Results: `intermediate/IsoformSwitchAnalyzeR/hmmer.txt`
+
+```{r}
+aSwitchListFilteredAnalyzed <- analyzePFAM(
+    switchAnalyzeRlist   = aSwitchListFilteredAnalyzed,
+    pathToPFAMresultFile = 'intermediate/IsoformSwitchAnalyzeR/hmmer.txt',
+    showProgress=FALSE
+)
+```
+
+### SignalP
+
+Web-server: [SignalP](https://services.healthtech.dtu.dk/service.php?SignalP-5.0)
+
+Download "Prediction summary" to `intermediate/IsoformSwitchAnalyzeR/SignalP.txt`
+
+```{r}
+aSwitchListFilteredAnalyzed <- analyzeSignalP(
+    switchAnalyzeRlist       = aSwitchListFilteredAnalyzed,
+    pathToSignalPresultFile  = 'intermediate/IsoformSwitchAnalyzeR/SignalP.txt'
+)
+```
+
+### IUPred2A
+
+Web-server: [IUPred2A](https://iupred2a.elte.hu/plot_new)
+
+Results: `intermediate/IsoformSwitchAnalyzeR/IUPred2A.result`
+
+```{r}
+aSwitchListFilteredAnalyzed <- analyzeIUPred2A(
+    switchAnalyzeRlist        = aSwitchListFilteredAnalyzed,
+    pathToIUPred2AresultFile = 'intermediate/IsoformSwitchAnalyzeR/IUPred2A.result',
+    showProgress = FALSE
+)
+```
+
+## Predicting Alternative Splicing
+
+```{r}
+aSwitchListFilteredAnalyzed <- analyzeAlternativeSplicing(
+    switchAnalyzeRlist = aSwitchListFilteredAnalyzed,
+    quiet=TRUE
+)
+```
+
+**Overview of number of different splicing types**
+
+```{r, echo=FALSE, eval=TRUE}
+rdname <- paste(dir.table, "IsoformSwitchAnalyzeR.RData", sep="/")
+# save.image()
+if (file.exists(rdname)){
+  load(rdname)
+  knitr::opts_chunk$set(eval=FALSE)
+}
+```
+
+**ES**: Exon Skipping. Compared to the hypothetical pre-RNA a single exon was skipped in the isoform analyzed (for every ES event annotated).
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$ES)
+```
+Interpretation: 969 isoforms contain a single exon skipping event and 319 isoforms each contain two or more exon skipping etc.
+
+**MEE**: Mutually exclusive exon. Special case were two isoforms form the same gene contains two mutually exclusive exons and which are not found in any of the other isoforms from that gene.
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$MEE)
+```
+
+**MES**: Multiple Exon Skipping. Compared to the hypothetical pre-RNA multiple consecutive exon was skipped in the isoform analyzed (for every MES event annotated).
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$MES)
+```
+
+**IR**: Intron Retention. Compared to the hypothetical pre-RNA an intron was retained in the isoform analyzed.
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$IR)
+```
+
+**A5**: Alternative 5'end donor site. Compared to the hypothetical pre-RNA an alternative 5'end donor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more upstream than the the pre-RNA (the upstream exon is shorter).
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$A5)
+```
+
+**A3**: Alternative 3'end acceptor site. Compared to the hypothetical pre-RNA an alternative 3'end acceptor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more downstream than the the pre-RNA (the downstream exon is shorter).
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$A3)
+```
+
+**ATSS**: Alternative Transcription Start Sites. Compared to the hypothetical pre-RNA an alternative transcription start sites was used. Since it is compared to the pre-RNA, the ATSS site used is per definition more downstream than the pre-RNA .
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$ATSS)
+```
+
+**ATTS**: Alternative Transcription Termination Sites. Compared to the hypothetical pre-RNA an alternative transcription Termination sites was used. Since it is compared to the pre-RNA, the ATTS site used is per definition more upstream than the the pre-RNA.
+
+```{r, eval=TRUE}
+table(aSwitchListFilteredAnalyzed$AlternativeSplicingAnalysis$ATTS)
+```
+
+## Predicting Switch Consequences
+
+```{r, eval=TRUE}
+aSwitchListFilteredAnalyzed <- analyzeSwitchConsequences(
+    aSwitchListFilteredAnalyzed,
+    onlySigIsoforms = T,
+    showProgress=F
+)
+extractSwitchSummary(aSwitchListFilteredAnalyzed, filterForConsequences = FALSE)
+extractSwitchSummary(aSwitchListFilteredAnalyzed, filterForConsequences = TRUE)
+```
+
+151/515=0.29 genes have isoform switches with functional consequences
+
+## Post Analysis of Isoform Switches with Consequences
+
+### Analysis of Individual Isoform Switching
+
+Extract top switching genes (by q-value)
+
+```{r, eval=TRUE}
+extractTopSwitches(
+    aSwitchListFilteredAnalyzed, 
+    filterForConsequences = TRUE, 
+    n = 10, 
+    sortByQvals = TRUE
+)
+```
+
+Extract top 10 switching genes (by the difference in isoform fraction dIF)
+
+```{r, eval=TRUE}
+extractTopSwitches(
+    aSwitchListFilteredAnalyzed, 
+    filterForConsequences = TRUE, 
+    n = 10, 
+    sortByQvals = FALSE
+)
+```
+
+Extract all significant genes/isoforms - ranked as indicated by the sortByQvals argument.
+
+```{r, eval=TRUE}
+switchingIso <- extractTopSwitches( 
+    aSwitchListFilteredAnalyzed, 
+    filterForConsequences = F, 
+    n = NA,                  # n=NA: all features are returned
+    extractGenes = FALSE,    # when FALSE isoforms are returned
+    sortByQvals = TRUE
+)
+```
+
+The switching isoforms in the MYLK and MYH11 genes:
+
+```{r, eval=TRUE}
+knitr::kable(subset(switchingIso, gene_name == 'MYLK'))
+knitr::kable(subset(switchingIso, gene_name == 'MYH11'))
+```
+
+Visualize MYLK and MYH11:
+
+```{r, eval=TRUE}
+switchPlot(aSwitchListFilteredAnalyzed, gene = 'MYLK')
+switchPlot(aSwitchListFilteredAnalyzed, gene = 'MYH11')
+```
+
+Visualize all significant genes:
+
+```{r, eval=F}
+dir.create(dir.fig, showWarnings = F)
+switchPlotTopSwitches(
+    switchAnalyzeRlist = aSwitchListFilteredAnalyzed, 
+    n = Inf,                                             # Set to Inf for all
+    filterForConsequences = F,
+    fileType = "png",                                   # alternative is "pdf"
+    pathToOutput = dir.fig
+)
+```
+
+### Genome-Wide Analysis of Isoform Switching
+
+#### Splicing Summary
+
+Abbreviation:
+
+  - **ES**: Exon Skipping. Compared to the hypothetical pre-RNA a single exon was skipped in the isoform analyzed (for every ES event annotated).
+
+  - **MEE**: Mutually exclusive exon. Special case were two isoforms form the same gene contains two mutually exclusive exons and which are not found in any of the other isoforms from that gene.
+
+  - **MES**: Multiple Exon Skipping. Compared to the hypothetical pre-RNA multiple consecutive exon was skipped in the isoform analyzed (for every MES event annotated).
+
+  - **IR**: Intron Retention. Compared to the hypothetical pre-RNA an intron was retained in the isoform analyzed.
+
+  - **A5**: Alternative 5'end donor site. Compared to the hypothetical pre-RNA an alternative 5'end donor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more upstream than the the pre-RNA (the upstream exon is shorter).
+
+  - **A3**: Alternative 3'end acceptor site. Compared to the hypothetical pre-RNA an alternative 3'end acceptor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more downstream than the the pre-RNA (the downstream exon is shorter).
+
+
+  - **ATSS**: Alternative Transcription Start Sites. Compared to the hypothetical pre-RNA an alternative transcription start sites was used. Since it is compared to the pre-RNA, the ATSS site used is per definition more downstream than the pre-RNA .
+
+  - **ATTS**: Alternative Transcription Termination Sites. Compared to the hypothetical pre-RNA an alternative transcription Termination sites was used. Since it is compared to the pre-RNA, the ATTS site used is per definition more upstream than the the pre-RNA.
+
+```{r, eval=TRUE}
+extractSplicingSummary(aSwitchListFilteredAnalyzed, onlySigIsoforms = T)
+extractSplicingEnrichment(aSwitchListFilteredAnalyzed)
+```
+
+```{r, eval=F, echo=F}
+pdf(paste(dir.fig, '1.SplicingSummary.pdf', sep="/"), width = 10, height = 5)
+extractSplicingSummary(aSwitchListFilteredAnalyzed, onlySigIsoforms = T)
+dev.off()
+
+pdf(paste(dir.fig, '2.SplicingEnrichment.pdf', sep="/"), width = 7, height = 5)
+extractSplicingEnrichment(aSwitchListFilteredAnalyzed,
+                          onlySigIsoforms = T,
+                          returnResult=F,
+                          returnSummary=F)
+dev.off()
+```
+
+#### Consequence Summary
+
+Abbreviation:
+
+  - Open Reading Frame (ORF/CDS)
+  
+  - protein domains (via Pfam)
+  
+  - signal peptides (via SignalP)
+  
+  - Intrinsically Disordered Regions (IDR, via IUPred2A)
+  
+  - coding potential (via CPAT)
+  
+  - sensitivity to Non-sense Mediated Decay (NMD) 
+  
+
+```{r, eval=TRUE}
+extractConsequenceSummary(aSwitchListFilteredAnalyzed)
+extractConsequenceEnrichment(aSwitchListFilteredAnalyzed)
+```
+
+
+```{r, eval=F, echo=F}
+pdf(paste(dir.fig, '3.ConsequenceSummary.pdf', sep="/"), width = 9, height = 5)
+extractConsequenceSummary(aSwitchListFilteredAnalyzed)
+dev.off()
+
+pdf(paste(dir.fig, '4.ConsequenceEnrichment.pdf', sep="/"), width = 7, height = 5)
+extractConsequenceEnrichment(aSwitchListFilteredAnalyzed,
+                             returnResult=F,
+                             returnSummary=F)
+dev.off()
+```
+
+#### All isoforms (unlike isoform pairs)
+
+All of the above splicing analysis relies on the identification of pairs of isoforms involved in a switch, but the analysis of alternative splicing can also be done from the perspective of the individual splice types. This can be done by asking the question: How does the isoform usage of all isoforms utilizing a particular splicing type change - in other words is all isoforms or only a subset of isoforms that are affected. 
+
+```{r, eval=TRUE}
+extractSplicingGenomeWide(aSwitchListFilteredAnalyzed)
+extractConsequenceGenomeWide(aSwitchListFilteredAnalyzed)
+```
+
+It can be seen that all isoforms using ATTS is generally used less, meaning it is a global phenomenon, whereas none of the other splice types or consequences are general.
+
+## Write
+
+All the results are stored in `results/tables/IsoformSwitchAnalyzeR/IsoformSwitchAnalyzeR.RData`,
+here I save only some tables needed for other analyses.
+
+Add gene names:
+
+```{r, message=FALSE, error=FALSE}
+isoformSwitchAnalysisW <- merge(aSwitchListFilteredAnalyzed$isoformSwitchAnalysis,
+                                unique(aSwitchListFilteredAnalyzed$isoformFeatures[,
+                                                        c('gene_ref', 'gene_id')]),
+                                all.x=T, by='gene_ref')
+isoformSwitchAnalysisCol <- c("isoform_id", "gene_id",  "condition_1", "condition_2",
+                              "dIF", "pvalue", "padj", "IF1", "IF2")
+isoformSwitchAnalysisW <- isoformSwitchAnalysisW[isoformSwitchAnalysisCol]
+gene_renamed <- gsub("\\..*","", isoformSwitchAnalysisW$gene_id)
+annotAll <- queryMany(unique(gene_renamed),
+                      scopes='ensembl.gene',
+                      fields='symbol', # pathway.kegg.id,go
+                      return.as='DataFrame',
+                      species='human',
+                      returnall=FALSE)
+# add full gene names
+gene2renamed <- data.frame(gene_id=isoformSwitchAnalysisW$gene_id, query=gene_renamed)
+annotAll <- merge(annotAll, gene2renamed, by='query')
+# remove duplicated and not found rows:
+duplNoSumNoFound <- which(duplicated(annotAll$query))
+annot <- as.data.frame(annotAll[-duplNoSumNoFound, c('gene_id', 'symbol')])
+
+isoformSwitchAnalysisW <- merge(isoformSwitchAnalysisW, annot, by='gene_id')
+```
+
+Write:
+
+```{r}
+write.table(isoformSwitchAnalysisW,
+            paste(dir.table, "isoformSwitchAnalysis.csv", sep="/"),
+            quote = F,
+            row.names = F,
+            sep = '\t')
+write.table(aSwitchListFilteredAnalyzed$switchConsequence,
+            paste(dir.table, "switchConsequence.csv", sep="/"),
+            quote = F,
+            row.names = F,
+            sep = '\t')
+write.table(unique(aSwitchListFiltered$isoformFeatures$gene_id),
+            paste(dir.table, "isoformSwitchAnalysis_ref_genes.csv", sep="/"),
+            quote = F,
+            row.names = F,
+            sep = '\t')
+```
+
+## Options
+
+### Analyze Small Upstream ORFs
+  
+run ORF analysis on longest ORF
+
+```{r, eval=F}
+aSwitchListFilteredAnalyzedORF <- analyzeORF(aSwitchListFilteredAnalyzed,
+                                             genomeObject = Hsapiens,
+                                             orfMethod='longest')
+mean(aSwitchListFilteredAnalyzedORF$orfAnalysis$orfTransciptLength, na.rm = T)
+```
+
+
+run ORF analysis on most upstream ORF
+
+```{r, eval=F}
+aSwitchListFilteredAnalyzedORF2 <- analyzeORF(aSwitchListFilteredAnalyzed,
+                                              orfMethod = 'mostUpstream',
+                                              minORFlength = 50)
+mean(aSwitchListFilteredAnalyzedORF2$orfAnalysis$orfTransciptLength, na.rm = T)
+```
+
+Calculate pairwise difference
+
+```{r, eval=F}
+summary(
+    aSwitchListFilteredAnalyzedORF2$orfAnalysis$orfTransciptLength -
+        aSwitchListFilteredAnalyzedORF$orfAnalysis$orfTransciptLength[
+            match(
+                aSwitchListFilteredAnalyzedORF2$orfAnalysis$isoform_id,
+                aSwitchListFilteredAnalyzedORF$orfAnalysis$isoform_id
+            )
+        ]
+)
+```
+
+### Adding Uncertain Category to Coding Potential Predictions
+
+There has been considerable debate about whether the default parameters for the coding potential calculated via CPAT are too lenient (too low). In fact this will always be a problem when having a single cutoff on a coding potential value. One possible solution is to introduce an “unknown” class with medium size coding potential which we can then disregard.
+
+```{r, eval=F}
+hist(aSwitchListFilteredAnalyzed$isoformFeatures$codingPotentialValue)
+```
+
+```{r, eval=F}
+table(aSwitchListFilteredAnalyzed$isoformFeatures$codingPotential, exclude = NULL)
+```
+
+By simply setting the mid-range values to NA it will cause IsoformSwitchAnalyzeR to ignore them, thereby removing the isoforms with “unknown” coding potential. This can be done as follows:
+
+```{r, eval=F}
+aSwitchListFilteredAnalyzed$isoformFeatures$codingPotential <- NA
+aSwitchListFilteredAnalyzed$isoformFeatures$codingPotential[which(aSwitchListFilteredAnalyzed$isoformFeatures$codingPotentialValue > 0.75)] <- TRUE
+aSwitchListFilteredAnalyzed$isoformFeatures$codingPotential[which(aSwitchListFilteredAnalyzed$isoformFeatures$codingPotentialValue < 0.25)] <- FALSE
+
+table(aSwitchListFilteredAnalyzed$isoformFeatures$codingPotential, exclude = NULL)
+```
+
+### Analyzing the Biological Mechanisms Behind Isoform Switching
+
+Analyze the biological mechanisms
+
+```{r, eval=F}
+bioMechanismeAnalysis <- analyzeSwitchConsequences(
+    aSwitchListFilteredAnalyzed, 
+    consequencesToAnalyze = c('tss','tts','intron_structure'),
+    showProgress = FALSE
+)$switchConsequence # only the consequences are interesting here
+```
+
+
+Subset to those with differences
+
+```{r, eval=F}
+bioMechanismeAnalysis <- bioMechanismeAnalysis[which(bioMechanismeAnalysis$isoformsDifferent),]
+```
+
+Extract the consequences of interest already stored in the switchAnalyzeRlist
+
+```{r, eval=F}
+myConsequences <- aSwitchListFilteredAnalyzed$switchConsequence
+myConsequences <- myConsequences[which(myConsequences$isoformsDifferent),]
+myConsequences$isoPair <- paste(myConsequences$isoformUpregulated, myConsequences$isoformDownregulated) # id for specific iso comparison
+```
+
+Obtain the mechanisms of the isoform switches with consequences
+
+```{r, eval=F}
+bioMechanismeAnalysis$isoPair <- paste(bioMechanismeAnalysis$isoformUpregulated, bioMechanismeAnalysis$isoformDownregulated)
+bioMechanismeAnalysis <- bioMechanismeAnalysis[which(bioMechanismeAnalysis$isoPair %in% myConsequences$isoPair),]  # id for specific iso comparison
+```
+
+This result is best summarized in a Venn diagram:
+
+```{r, eval=F}
+### Create list with the isoPair ids for each consequence
+AS   <- bioMechanismeAnalysis$isoPair[ which( bioMechanismeAnalysis$featureCompared == 'intron_structure')]
+aTSS <- bioMechanismeAnalysis$isoPair[ which( bioMechanismeAnalysis$featureCompared == 'tss'             )]
+aTTS <- bioMechanismeAnalysis$isoPair[ which( bioMechanismeAnalysis$featureCompared == 'tts'             )]
+
+mechList <- list(
+    AS=AS,
+    aTSS=aTSS,
+    aTTS=aTTS
+)
+
+### Create Venn diagram
+#> Loading required package: grid
+#> Loading required package: futile.logger
+myVenn <- venn.diagram(
+    x = mechList,
+    col='transparent',
+    alpha=0.4,
+    fill=RColorBrewer::brewer.pal(n=3,name='Dark2'),
+    filename=NULL
+)
+
+### Plot the venn diagram
+grid.newpage() ; grid.draw(myVenn)
+```
+
+### Adding differential gene expression
+
+To add the result of a differential expression analysis all you need to do is overwrite the following columns:
+
+```{r, eval=F}
+exampleSwitchList$isoformFeatures$gene_q_value
+exampleSwitchList$isoformFeatures$iso_q_value
+```

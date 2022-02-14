@@ -193,7 +193,7 @@ summary {
 <address class="author_afil">
 LUDC Bioinformatics Unit<br><a class="author_email" href="mailto:#"><a href="mailto:dmytro.kryvokhyzha@med.lu.se" class="email">dmytro.kryvokhyzha@med.lu.se</a></a>
 </address>
-<h4 class="date">29 januari, 2022</h4>
+<h4 class="date">14 februari, 2022</h4>
 
 </div>
 
@@ -298,16 +298,14 @@ Rscript code/DEXSeq_to_exons.R</code></pre>
 <li><p><code>results/tables/DEXSeq/genelevel_FDR.csv</code> - gene-level FDR values.</p></li>
 <li><p><code>results/tables/DEXSeq/DEXSeq_results_bins2exons.csv</code> - correpondance between the DEXSeq bins and real exons.</p></li>
 </ul>
-<div id="enrichment" class="section level4">
-<h4>Enrichment</h4>
-<p>Performed with <a href="http://www.webgestalt.org/">WebGestalt</a>:</p>
-<pre class="bash"><code>mkdir -p results/reports/WebGestaltR/
-R -e &#39;rmarkdown::render(&quot;code/WebGestaltR.Rmd&quot;, output_dir=&quot;results/reports/WebGestaltR/&quot;)&#39;</code></pre>
-<p>Results:</p>
+<p>Results interpretation</p>
+<p>The exon order and genes are presented as in the reference. Strand of a gene can vary:</p>
 <ul>
-<li><code>results/reports/WebGestaltR/</code> - report describing the analysis, figures and tables.</li>
+<li><code>+</code> - positive, or 5’-&gt;3’</li>
+<li><code>-</code> - negative, or 3’-&gt;5’</li>
+<li><code>.</code> - undetermined.</li>
 </ul>
-</div>
+<p>You can find this information in <code>intermediate/gene_coord_strand.csv</code></p>
 </div>
 <div id="splicing-events-analysis" class="section level3">
 <h3>Splicing events analysis</h3>
@@ -361,48 +359,45 @@ awk -F&#39;\t&#39; &#39;NR==1 || $22&lt;=0.05&#39; results/tables/rMATS_bam/MXE.
 </div>
 <div id="isoform-based-analysis" class="section level3">
 <h3>Isoform-based analysis</h3>
-<div id="suppa" class="section level4">
-<h4>SUPPA</h4>
+<div id="isoform-switch-analysis" class="section level4">
+<h4>Isoform Switch Analysis</h4>
 <p>Transcrips were counted with <a href="https://salmon.readthedocs.io/en/latest/index.html">Salmon</a> The code is added to <code>code/Snakefile</code>.</p>
-<p>Then the counts were normilized to TPM and tested for differential transcript usage with <a href="https://github.com/comprna/SUPPA#differential-transcript-usage">SUPPA2</a>. The code is added to <code>code/Snakefile</code>.</p>
-<p>The results are processed and visualized in R:</p>
-<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/SUPPA.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
+<p>Then the counts were tested for differential transcript usage with <a href="https://bioconductor.org/packages/devel/bioc/vignettes/IsoformSwitchAnalyzeR/inst/doc/IsoformSwitchAnalyzeR.html">IsoformSwitchAnalyzeR</a>:</p>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/IsoformSwitchAnalyzeR.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
 <p>Results:</p>
 <ul>
-<li><p><code>results/tables/SUPPA/SUPPA_all.csv</code> - SUPPA all results.</p></li>
-<li><p><code>results/tables/SUPPA/SUPPA_FDR_0.05.pdf</code> - SUPPA significant results (FDR=0.05).</p></li>
-<li><p><code>results/tables/SUPPA/SUPPA_FDR_0.05_PSI_0.1.pdf</code> - SUPPA significant results (FDR=0.05) with the PSI &gt; 10%.</p></li>
-<li><p><code>results/figures/SUPPA/</code> - plots for SUPPA significant results (FDR=0.05).</p></li>
+<li><p><code>results/tables/IsoformSwitchAnalyzeR/</code> - RData file with all results and some results tables.</p></li>
+<li><p><code>results/figures/IsoformSwitchAnalyzeR/</code> - plots for significant results (FDR=0.05 and min dIF=0.1).</p></li>
 </ul>
 </div>
+</div>
+<div id="enrichment" class="section level3">
+<h3>Enrichment</h3>
+<p>Performed with <a href="http://www.webgestalt.org/">WebGestalt</a>:</p>
+<ul>
+<li><p>DESeq2 results were tested with the <strong>GSEA</strong> method</p></li>
+<li><p>Splicing results were tested with the <strong>ORA</strong> method</p></li>
+</ul>
+<pre class="bash"><code>mkdir -p results/reports/WebGestaltR/
+R -e &#39;rmarkdown::render(&quot;code/WebGestaltR.Rmd&quot;, output_dir=&quot;results/reports/WebGestaltR/&quot;)&#39;</code></pre>
+<p>Results:</p>
+<ul>
+<li><code>results/reports/WebGestaltR/</code> - reports with figures and tables.</li>
+</ul>
+<p><strong>Gene Set Enrichment Analysis (GSEA)</strong> eliminates the need for an ad hoc cutoff (e.g. FDR&lt;0.05) that is used in defining the input gene set in the ORA analysis. GSEA works by ranking all analyzed genes according to the fold change, and tests whether any annotated gene set is ranked unexpected high or low through running-sum statistic.</p>
+<p><strong>Over-representation Analysis (ORA)</strong>. ORA counts the number of common functions shared by an input gene set (e.g. all genes with splicing) and each annotated gene set (e.g. all analyzed genes), and applies a statistical test to calculate the statistical significance of the overlap.</p>
+<p>The result files have either <em>ORA</em> or <em>GSEA</em> in their filenames respectively.</p>
 </div>
 <div id="overlap" class="section level3">
 <h3>Overlap</h3>
-<p>I also check how many genes that show alternative splicing overlap betweem analyses (FDR: DEXSeq=0.01, rMAT=0.05, SUPPA=0.05):</p>
-<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/splicing_gene_overlap.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
+<p>How many exons/transcripts and genes that show alternative splicing overlap betweem analyses (FDR: DEXSeq=0.01, rMAT=0.05, ISA=0.05):</p>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/splicing_overlap_DEXSeq_rMATS_ISA.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
 <p>Results:</p>
 <ul>
-<li><p><code>results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_gene_overlap.csv</code> - genes that are significant in all three analyses.</p></li>
-<li><p><code>results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_atleast2genes_overlap.csv</code> - genes that are significant in at least two analyses.</p></li>
-<li><p><code>results/figures/rmats_dexseq_suppa_gene_overlap.pdf</code> - Venn Diagram of overlap between the three analyses.</p></li>
+<li><p><code>results/figures/rMATS_DEXSeq_ISA_overlap/</code> - venn diagra showing overlaps.</p></li>
+<li><p><code>results/tables/rMATS_DEXSeq_ISA_overlap/</code> - tables showing overlaps for genes that are significant in at least two (<code>atleast2overlap</code>) and all three (<code>all3overlap</code>) analyses.</p></li>
 </ul>
-<p>In addition, I also check if there are exact exons matches in the results.</p>
-<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/splicing_exon_overlap.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
-<p>Results:</p>
-<ul>
-<li><code>results/tables/splicing_overlap_exon/</code> - results for DEXSeq overlap with rMATS and SUPPA based on exon overlaps.</li>
-</ul>
-<p><em>Note, only the comparison DEXSeq bins to rMATS exons is reliable here. SUPPA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.</em></p>
-</div>
-<div id="results-interpretation" class="section level3">
-<h3>Results interpretation</h3>
-<p>The exon order and genes are presented as in the reference. Strand of a gene can vary:</p>
-<ul>
-<li><code>+</code> - positive, or 5’-&gt;3’</li>
-<li><code>-</code> - negative, or 3’-&gt;5’</li>
-<li><code>.</code> - undetermined.</li>
-</ul>
-<p>You can find this information in <code>intermediate/gene_coord_strand.csv</code></p>
+<p><em>Note, only the comparison DEXSeq bins to rMATS exons is reliable here. ISA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.</em></p>
 </div>
 </div>
 

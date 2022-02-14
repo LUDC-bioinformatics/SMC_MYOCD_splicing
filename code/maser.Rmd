@@ -44,6 +44,7 @@ This notebook visualizes the differential alternative splicing events detected w
 ```{r, message=FALSE, eval=TRUE}
 library(maser)
 library(rtracklayer)
+library(RColorBrewer)
 ```
 
 ## Data
@@ -106,6 +107,21 @@ dtop_fdr <- topEvents(d, fdr = 0.05, deltaPSI = 0.0)
 
 ```{r}
 dtop
+```
+
+Venn diagram
+
+```{r}
+types <- c('A3SS', 'A5SS', 'SE', 'RI', 'MXE')
+numbers <- c(12, 23, 146, 36, 22)
+
+colors5 <- brewer.pal(5, 'Accent')
+piepercent <- round(100*numbers/sum(numbers), 0)
+types <- paste(as.character(piepercent), "% ", types, sep="")
+
+pdf('results/figures/rMATSsummary.pdf', height=5, width=5)
+pie(numbers, labels =  types, col = colors5)
+dev.off()
 ```
 
 ### Plots

@@ -21,8 +21,6 @@ rule all:
         # 'intermediate/rMATS/',
         # expand('results/figures/rMATS_rmats2sashimiplot_{Jtype}', Jtype=['SE','A5SS','A3SS','MXE','RI']),
         # expand('results/tables/salmon/{sample}/quant.sf.gz', sample=SAMPLES),
-        'intermediate/suppa/salmon_TPM_isoform.dpsi',
-        'intermediate/suppa/salmon_TPM_isoform.clustvec',
         'intermediate/gene_coord_strand.csv'
 
 rule download_genome:
@@ -565,84 +563,6 @@ rule salmon_TPM:
     shell:
         '''
         Rscript code/salmon2TPM.R
-        '''
-
-rule suppa_ioi:
-    input:
-        'data/reference/gencode.v35.primary_assembly.annotation.gtf'
-    output:
-        'intermediate/suppa/gencode.v35.primary_assembly.annotation.ioi'
-    params:
-        'intermediate/suppa/gencode.v35.primary_assembly.annotation'
-    shell:
-        '''
-        suppa.py generateEvents \
-            -i {input} \
-            -o {params} \
-            -f ioi
-        '''
-
-rule suppa_psi:
-    input:
-        gtf = 'data/reference/gencode.v35.primary_assembly.annotation.gtf',
-        csv = 'results/tables/salmon/salmon_TPM_{cond}.csv'
-    output:
-        psi = 'intermediate/suppa/salmon_TPM_{cond}_isoform.psi'
-    params:
-        'intermediate/suppa/salmon_TPM_{cond}'
-    shell:
-        '''
-        suppa.py psiPerIsoform \
-            -g {input.gtf} \
-            -e {input.csv} \
-            -o {params}
-        '''
-
-rule suppa_DS:
-    input:
-        psi = expand('intermediate/suppa/salmon_TPM_{cond}_isoform.psi',
-                    cond=['CMV', 'MYO']),
-        ioi = 'intermediate/suppa/gencode.v35.primary_assembly.annotation.ioi',
-        csv = expand('results/tables/salmon/salmon_TPM_{cond}.csv',
-                    cond=['CMV', 'MYO'])
-    output:
-        dpsi = 'intermediate/suppa/salmon_TPM_isoform.dpsi',
-        psivec = 'intermediate/suppa/salmon_TPM_isoform.psivec'
-    params:
-        dpsi = 'intermediate/suppa/salmon_TPM_isoform'
-    shell:
-        '''
-        suppa.py diffSplice \
-            --method empirical \
-            --input {input.ioi} \
-            --psi {input.psi} \
-            --tpm {input.csv} \
-            -gc -me -nan 0.5 \
-            -o {params}
-        rename .temp.0 "" {output.dpsi}.temp.0
-        '''
-
-rule suppa_cluster:
-    input:
-        dpsi = 'intermediate/suppa/salmon_TPM_isoform.dpsi',
-        psivec = 'intermediate/suppa/salmon_TPM_isoform.psivec'
-    output:
-        clustvec = 'intermediate/suppa/salmon_TPM_isoform.clustvec'
-    params:
-        clustvec = 'salmon_TPM_isoform'
-    shell:
-        '''
-        suppa.py clusterEvents \
-            -d {input.dpsi} \
-            -p {input.psivec} \
-            --groups 1-4,5-8 \
-            --sig-threshold 0.05 \
-            --eps 0.1 \
-            --separation 0.5 \
-            --dpsi-threshold 0.1 \
-            --min-pts 10 \
-            -c OPTICS \
-            -o {params}
         '''
 
 rule gene_coord_strand:

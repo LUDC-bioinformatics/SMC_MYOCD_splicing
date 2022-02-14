@@ -179,19 +179,15 @@ Results:
 
 - `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correpondance between the DEXSeq bins and real exons.
 
-#### Enrichment
+Results interpretation
 
-Performed with [WebGestalt](http://www.webgestalt.org/):
+The exon order and genes are presented as in the reference. Strand of a gene can vary:
 
-```{bash}
-mkdir -p results/reports/WebGestaltR/
-R -e 'rmarkdown::render("code/WebGestaltR.Rmd", output_dir="results/reports/WebGestaltR/")'
-```
+   - `+` - positive, or 5'->3'
+   - `-` - negative, or 3'->5'
+   - `.` - undetermined.
 
-Results:
-
-- `results/reports/WebGestaltR/` - report describing the analysis, figures and tables.
-
+You can find this information in `intermediate/gene_coord_strand.csv`
 
 ### Splicing events analysis
 
@@ -270,74 +266,69 @@ Results:
 
 ### Isoform-based analysis
 
-#### SUPPA
+#### Isoform Switch Analysis
 
 Transcrips were counted with [Salmon](https://salmon.readthedocs.io/en/latest/index.html)
 The code is added to `code/Snakefile`.
 
-Then the counts were normilized to TPM and tested for differential transcript usage with
-[SUPPA2](https://github.com/comprna/SUPPA#differential-transcript-usage).
-The code is added to `code/Snakefile`.
-
-The results are processed and visualized in R:
+Then the counts were tested for differential transcript usage with
+[IsoformSwitchAnalyzeR](https://bioconductor.org/packages/devel/bioc/vignettes/IsoformSwitchAnalyzeR/inst/doc/IsoformSwitchAnalyzeR.html):
 
 ```{bash}
-R -e 'rmarkdown::render("code/SUPPA.Rmd", output_dir="results/reports/")'
+R -e 'rmarkdown::render("code/IsoformSwitchAnalyzeR.Rmd", output_dir="results/reports/")'
 ```
 
 Results:
 
-- `results/tables/SUPPA/SUPPA_all.csv` - SUPPA all results.
-
-- `results/tables/SUPPA/SUPPA_FDR_0.05.pdf` - SUPPA significant results (FDR=0.05).
-
-- `results/tables/SUPPA/SUPPA_FDR_0.05_PSI_0.1.pdf` - SUPPA significant results (FDR=0.05)
-   with the PSI > 10%.
+- `results/tables/IsoformSwitchAnalyzeR/` - RData file with all results and some results tables.
    
-- `results/figures/SUPPA/` - plots for SUPPA significant results (FDR=0.05).
+- `results/figures/IsoformSwitchAnalyzeR/` - plots for significant results (FDR=0.05 and min dIF=0.1).
+
+
+### Enrichment
+
+Performed with [WebGestalt](http://www.webgestalt.org/):
+
+   - DESeq2 results were tested with the **GSEA** method
+   
+   - Splicing results were tested with the **ORA** method
+
+```{bash}
+mkdir -p results/reports/WebGestaltR/
+R -e 'rmarkdown::render("code/WebGestaltR.Rmd", output_dir="results/reports/WebGestaltR/")'
+```
+
+Results:
+
+- `results/reports/WebGestaltR/` - reports with figures and tables.
+
+**Gene Set Enrichment Analysis (GSEA)** eliminates the need for an ad hoc cutoff (e.g. FDR<0.05) that is used in defining the input gene set in the ORA analysis. GSEA works by ranking all analyzed genes according to the fold change, and tests whether any annotated gene set is ranked unexpected high or low through running-sum statistic.
+
+**Over-representation Analysis (ORA)**. ORA counts the number of common functions shared by an input gene set (e.g. all genes with splicing) and each annotated gene set (e.g. all analyzed genes), and applies a statistical test to calculate the statistical significance of the overlap.
+
+The result files have either *ORA* or *GSEA* in their filenames respectively.
+
 
 ### Overlap
 
-I also check how many genes that show alternative splicing overlap betweem analyses
-(FDR: DEXSeq=0.01, rMAT=0.05,  SUPPA=0.05):
+How many exons/transcripts and genes that show alternative splicing overlap betweem analyses
+(FDR: DEXSeq=0.01, rMAT=0.05,  ISA=0.05):
 
 ```{bash}
-R -e 'rmarkdown::render("code/splicing_gene_overlap.Rmd", output_dir="results/reports/")'
+R -e 'rmarkdown::render("code/splicing_overlap_DEXSeq_rMATS_ISA.Rmd", output_dir="results/reports/")'
 ```
 
 Results:
 
-   - `results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_gene_overlap.csv` - genes that are significant in all three analyses.
+   - `results/figures/rMATS_DEXSeq_ISA_overlap/` - venn diagra showing overlaps.
    
-   - `results/tables/splicing_overlap_gene/rMATS_DEXSeq_SUPPA_atleast2genes_overlap.csv` - genes that are significant in at
-      least two analyses.
+   - `results/tables/rMATS_DEXSeq_ISA_overlap/` - tables showing overlaps for genes that are significant in at least two (`atleast2overlap`) and all three (`all3overlap`) analyses.
+
    
-   - `results/figures/rmats_dexseq_suppa_gene_overlap.pdf` - Venn Diagram of overlap between the three analyses.
-
-In addition, I also check if there are exact exons matches in the results.
-
-```{bash}
-R -e 'rmarkdown::render("code/splicing_exon_overlap.Rmd", output_dir="results/reports/")'
-```
-
-Results:
-
-   - `results/tables/splicing_overlap_exon/` - results for DEXSeq overlap with rMATS and SUPPA based on exon overlaps.
-   
-*Note, only the comparison DEXSeq bins to rMATS exons is reliable here. SUPPA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.*
-
-### Results interpretation
-
-The exon order and genes are presented as in the reference. Strand of a gene can vary:
-
-   - `+` - positive, or 5'->3'
-   - `-` - negative, or 3'->5'
-   - `.` - undetermined.
-
-You can find this information in `intermediate/gene_coord_strand.csv`
+*Note, only the comparison DEXSeq bins to rMATS exons is reliable here. ISA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.*
 
 ```{bash, include=FALSE, eval=FALSE}
-rsync -rv --dry-run --progress -e 'ssh -p 22022' \
+rsync -aAXv --dry-run --progress -e 'ssh -p 22022' \
    --exclude="toDo.txt" \
    --exclude="*.directory" \
    --exclude="*.Rhistory" \

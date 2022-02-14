@@ -24,6 +24,20 @@ repor_dir <- 'results/reports/WebGestaltR'
 
 ## Data
 
+### DESeq2
+
+Load
+
+```{r}
+DESeqD <- read.table('results/tables/DESeq/DESeq_all.csv',
+                  sep = "\t", header = T)
+DESeqGSEA <- DESeqD[,c("gene", "log2FoldChange")]
+DESeqGSEA$gene <- gsub("\\..*","", DESeqGSEA$gene)
+DESeqGSEA <- na.omit(DESeqGSEA[order(DESeqGSEA$log2FoldChange, decreasing = T),])
+```
+
+### DEXSeq
+
 Get genes for FDR<0.01:
  
 ```{bash, eval=FALSE}
@@ -45,7 +59,7 @@ python code/DEXSeq_to_genes.py \
 
 Load the data:
 
-```{r}
+```{r, eval=FALSE}
 dDE <- read.table('intermediate/WebGestaltR/DEXSeq_results_FDR0.01genes.csv',
                   sep = "\t", header = T)
 dall <- read.table('intermediate/WebGestaltR/DEXSeq_results_FDRgenes.csv',
@@ -54,16 +68,268 @@ dall <- read.table('intermediate/WebGestaltR/DEXSeq_results_FDRgenes.csv',
 
 Create lists:
 
-```{r}
+```{r, eval=FALSE}
 DEgene <- gsub("\\..*","", dDE$gene)
 Allgene <- gsub("\\..*","", dall$gene)
 length(DEgene)
 length(Allgene)
 ```
 
+### rMATS
+
+```{r, eval=FALSE}
+rmats_fdr <- 0.05
+Jtype <- c("A3SS", "A5SS", "SE", "RI", "MXE")
+rmats_sign <- c()
+rmats_all <- c()
+for (i in Jtype){
+   #i <- "SE"
+   d <- read.table(paste('results/tables/rMATS/rMATS_sign_', i, '.csv', sep = ""),
+                   header = T, sep = "\t", stringsAsFactors=F)
+   rmats_sign <- unique(c(rmats_sign, gsub("\\..*","", as.character(d$GeneID))))
+   d2 <- read.table(paste('results/tables/rMATS/rMATS_all_', i, '.csv', sep = ""),
+                   header = T, sep = "\t", stringsAsFactors=F)
+   rmats_all <- unique(c(rmats_all, gsub("\\..*","", as.character(d2$GeneID))))
+}
+length(rmats_sign)
+length(rmats_all)
+```
+
+### ISA
+
+```{r, eval=FALSE}
+isa_fdr <- 0.05
+isa_All <- read.table('results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis.csv',
+                      header = T, sep = '\t')
+isa_ref <- read.table('results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis_ref_genes.csv',
+                      header = T, sep = '\t')
+isa_sing <- na.omit(unique(as.character(isa_All$gene_id[which(isa_All$padj <= isa_fdr)])))
+isa_sing <- unique(gsub("\\..*","", isa_sing))
+isa_all <- unique(gsub("\\..*","", as.character(isa_ref$x)))
+length(isa_sing)
+length(isa_all)
+```
+
 ## Enrichment
 
-### KEGG
+### DESeq2
+
+#### KEGG
+
+```{r}
+DESeq2_gsea_kegg <- WebGestaltR(interestGene = DESeqGSEA,
+                        interestGeneType = "ensembl_gene_id",
+                        referenceGeneType = "ensembl_gene_id",
+                        enrichMethod = "GSEA",
+                        organism = "hsapiens",
+                        enrichDatabase = 'pathway_KEGG',
+                        sigMethod = "fdr",
+                        fdrMethod = "BH",
+                        fdrThr = 0.05,
+                        reportNum = 30,
+                        minNum = 5,
+                        maxNum = 2000,
+                        isOutput = TRUE,
+                        outputDirectory = repor_dir,
+                        projectName = 'DESeq2_GSEA_KEGG',
+                        nThreads = 8)
+DESeq2_gsea_kegg <- DESeq2_gsea_kegg[order(DESeq2_gsea_kegg$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_kegg[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### GO
+
+```{r}
+DESeq2_gsea_go <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = c('geneontology_Biological_Process_noRedundant',
+                                         'geneontology_Cellular_Component_noRedundant',
+                                         'geneontology_Molecular_Function_noRedundant'),
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_GO',
+                      nThreads = 8)
+DESeq2_gsea_go <- DESeq2_gsea_go[order(DESeq2_gsea_go$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_go[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### Panther
+
+```{r}
+DESeq2_gsea_Panther <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Panther',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_Panther',
+                      nThreads = 8)
+DESeq2_gsea_Panther <- DESeq2_gsea_Panther[order(DESeq2_gsea_Panther$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_Panther[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### Reactome
+
+```{r}
+DESeq2_gsea_Reactome <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Reactome',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_Reactome',
+                      nThreads = 8)
+DESeq2_gsea_Reactome <- DESeq2_gsea_Reactome[order(DESeq2_gsea_Reactome$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_Reactome[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### Wikipathway
+
+```{r}
+DESeq2_gsea_Wikipathway <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'pathway_Wikipathway',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_Wikipathway',
+                      nThreads = 8)
+DESeq2_gsea_Wikipathway <- DESeq2_gsea_Wikipathway[order(DESeq2_gsea_Wikipathway$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_Wikipathway[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### CORUM
+
+```{r}
+DESeq2_gsea_CORUM <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'network_CORUM',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_CORUM',
+                      nThreads = 8)
+DESeq2_gsea_CORUM <- DESeq2_gsea_CORUM[order(DESeq2_gsea_CORUM$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_CORUM[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### CORUMA
+
+```{r}
+DESeq2_gsea_CORUMA <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'network_CORUMA',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_CORUMA',
+                      nThreads = 8)
+DESeq2_gsea_CORUMA <- DESeq2_gsea_CORUMA[order(DESeq2_gsea_CORUMA$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_CORUMA[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### phenotype_Human_Phenotype_Ontology
+
+R crashes.
+
+```{r}
+DESeq2_gsea_Phenotype <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'phenotype_Human_Phenotype_Ontology',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_Phenotype',
+                      nThreads = 1)
+DESeq2_gsea_Phenotype <- DESeq2_gsea_Phenotype[order(DESeq2_gsea_Phenotype$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_Phenotype[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+#### MuscleGeneSets (fix error)
+
+Fails with the error `Error in plot.new() : figure margins too large`.
+```{r}
+par(mar=c(0,0,0,0))
+DESeq2_gsea_MuscleGeneSets <- WebGestaltR(interestGene = DESeqGSEA,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "GSEA",
+                      organism = "hsapiens",
+                      enrichDatabase = 'community-contributed_MuscleGeneSets_Duddy_2017',
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 10,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'DESeq2_GSEA_MuscleGeneSets',
+                      nThreads = 8)
+DESeq2_gsea_MuscleGeneSets <- DESeq2_gsea_MuscleGeneSets[order(DESeq2_gsea_MuscleGeneSets$enrichmentScore, decreasing = T),]
+knitr::kable(head(DESeq2_gsea_MuscleGeneSets[,c('description', 'enrichmentScore', 'FDR')]))
+```
+
+### DEXSeq
+
+#### KEGG
 
 ```{r}
 ora_kegg <- WebGestaltR(interestGene = DEgene,
@@ -87,7 +353,7 @@ ora_kegg <- ora_kegg[order(ora_kegg$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_kegg[,c('description', 'enrichmentRatio')]))
 ```
 
-### GO
+#### GO
 
 ```{r}
 ora_go <- WebGestaltR(interestGene = DEgene,
@@ -113,7 +379,7 @@ ora_go <- ora_go[order(ora_go$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_go[,c('description', 'enrichmentRatio')]))
 ```
 
-### Panther
+#### Panther
 
 ```{r}
 ora_Panther <- WebGestaltR(interestGene = DEgene,
@@ -137,7 +403,7 @@ ora_Panther <- ora_Panther[order(ora_Panther$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_Panther[,c('description', 'enrichmentRatio')]))
 ```
 
-### Reactome
+#### Reactome
 
 ```{r}
 ora_Reactome <- WebGestaltR(interestGene = DEgene,
@@ -161,7 +427,7 @@ ora_Reactome <- ora_Reactome[order(ora_Reactome$enrichmentRatio, decreasing = T)
 knitr::kable(head(ora_Reactome[,c('description', 'enrichmentRatio')]))
 ```
 
-### Wikipathway
+#### Wikipathway
 
 ```{r}
 ora_Wikipathway <- WebGestaltR(interestGene = DEgene,
@@ -185,7 +451,7 @@ ora_Wikipathway <- ora_Wikipathway[order(ora_Wikipathway$enrichmentRatio, decrea
 knitr::kable(head(ora_Wikipathway[,c('description', 'enrichmentRatio')]))
 ```
 
-### network_CORUM
+#### CORUM
 
 ```{r}
 ora_CORUM <- WebGestaltR(interestGene = DEgene,
@@ -209,7 +475,7 @@ ora_CORUM <- ora_CORUM[order(ora_CORUM$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_CORUM[,c('description', 'enrichmentRatio')]))
 ```
 
-### CORUMA
+#### CORUMA
 
 ```{r}
 ora_CORUMA <- WebGestaltR(interestGene = DEgene,
@@ -233,7 +499,7 @@ ora_CORUMA <- ora_CORUMA[order(ora_CORUMA$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_CORUMA[,c('description', 'enrichmentRatio')]))
 ```
 
-### phenotype_Human_Phenotype_Ontology
+#### phenotype
 
 ```{r}
 ora_Phenotype <- WebGestaltR(interestGene = DEgene,
@@ -257,7 +523,7 @@ ora_Phenotype <- ora_Phenotype[order(ora_Phenotype$enrichmentRatio, decreasing =
 knitr::kable(head(ora_Phenotype[,c('description', 'enrichmentRatio')]))
 ```
 
-### community-contributed_MuscleGeneSets_Duddy_2017
+#### MuscleGeneSets
 
 ```{r}
 ora_MuscleGeneSets <- WebGestaltR(interestGene = DEgene,
@@ -279,6 +545,112 @@ ora_MuscleGeneSets <- WebGestaltR(interestGene = DEgene,
                       nThreads = 8)
 ora_MuscleGeneSets <- ora_MuscleGeneSets[order(ora_MuscleGeneSets$enrichmentRatio, decreasing = T),]
 knitr::kable(head(ora_MuscleGeneSets[,c('geneSet', 'enrichmentRatio')]))
+```
+
+### rMATS
+
+No significant enrichment.
+
+#### KEGG
+
+```{r}
+rmats_kegg <- WebGestaltR(interestGene = rmats_sign,
+                        referenceGene = rmats_all,
+                        interestGeneType = "ensembl_gene_id",
+                        referenceGeneType = "ensembl_gene_id",
+                        enrichMethod = "ORA",
+                        organism = "hsapiens",
+                        enrichDatabase = 'pathway_KEGG',
+                        sigMethod = "fdr",
+                        fdrMethod = "BH",
+                        fdrThr = 0.05,
+                        reportNum = 30,
+                        minNum = 5,
+                        maxNum = 2000,
+                        isOutput = TRUE,
+                        outputDirectory = repor_dir,
+                        projectName = 'rMATS_geneFDR0.05_ORA_KEGG',
+                        nThreads = 8)
+rmats_kegg <- rmats_kegg[order(rmats_kegg$enrichmentRatio, decreasing = T),]
+knitr::kable(head(rmats_kegg[,c('description', 'enrichmentRatio')]))
+```
+
+#### GO
+
+```{r}
+rmats_go <- WebGestaltR(interestGene = rmats_sign,
+                      referenceGene = rmats_all,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = c('geneontology_Biological_Process_noRedundant',
+                                         'geneontology_Cellular_Component_noRedundant',
+                                         'geneontology_Molecular_Function_noRedundant'),
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'rMATS_geneFDR0.05_ORA_GO',
+                      nThreads = 8)
+rmats_go <- rmats_go[order(rmats_go$enrichmentRatio, decreasing = T),]
+knitr::kable(head(rmats_go[,c('description', 'enrichmentRatio')]))
+```
+
+### ISA
+
+#### KEGG
+
+```{r}
+isa_kegg <- WebGestaltR(interestGene = isa_sing,
+                        referenceGene = isa_all,
+                        interestGeneType = "ensembl_gene_id",
+                        referenceGeneType = "ensembl_gene_id",
+                        enrichMethod = "ORA",
+                        organism = "hsapiens",
+                        enrichDatabase = 'pathway_KEGG',
+                        sigMethod = "fdr",
+                        fdrMethod = "BH",
+                        fdrThr = 0.05,
+                        reportNum = 30,
+                        minNum = 5,
+                        maxNum = 2000,
+                        isOutput = TRUE,
+                        outputDirectory = repor_dir,
+                        projectName = 'ISA_geneFDR0.05_ORA_KEGG',
+                        nThreads = 8)
+isa_kegg <- isa_kegg[order(isa_kegg$enrichmentRatio, decreasing = T),]
+knitr::kable(head(isa_kegg[,c('description', 'enrichmentRatio')]))
+```
+
+#### GO
+
+```{r}
+isa_go <- WebGestaltR(interestGene = isa_sing,
+                      referenceGene = isa_all,
+                      interestGeneType = "ensembl_gene_id",
+                      referenceGeneType = "ensembl_gene_id",
+                      enrichMethod = "ORA",
+                      organism = "hsapiens",
+                      enrichDatabase = c('geneontology_Biological_Process_noRedundant',
+                                         'geneontology_Cellular_Component_noRedundant',
+                                         'geneontology_Molecular_Function_noRedundant'),
+                      sigMethod = "fdr",
+                      fdrMethod = "BH",
+                      fdrThr = 0.05,
+                      reportNum = 30,
+                      minNum = 5,
+                      maxNum = 2000,
+                      isOutput = TRUE,
+                      outputDirectory = repor_dir,
+                      projectName = 'ISA_geneFDR0.05_ORA_GO',
+                      nThreads = 8)
+isa_go <- isa_go[order(isa_go$enrichmentRatio, decreasing = T),]
+knitr::kable(head(isa_go[,c('description', 'enrichmentRatio')]))
 ```
 
 ```{bash, include=F, eval=T}
