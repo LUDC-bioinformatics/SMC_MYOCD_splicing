@@ -193,7 +193,7 @@ summary {
 <address class="author_afil">
 LUDC Bioinformatics Unit<br><a class="author_email" href="mailto:#"><a href="mailto:dmytro.kryvokhyzha@med.lu.se" class="email">dmytro.kryvokhyzha@med.lu.se</a></a>
 </address>
-<h4 class="date">14 februari, 2022</h4>
+<h4 class="date">11 mars, 2022</h4>
 
 </div>
 
@@ -399,6 +399,15 @@ R -e &#39;rmarkdown::render(&quot;code/WebGestaltR.Rmd&quot;, output_dir=&quot;r
 </ul>
 <p><em>Note, only the comparison DEXSeq bins to rMATS exons is reliable here. ISA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.</em></p>
 </div>
+</div>
+<div id="slmap" class="section level2">
+<h2>SLMAP</h2>
+<p>SLMAP showed differential exon usage results, but it was not significant in the ISA. I try to create the ISA-like plot to reflect the differential exon usage results.</p>
+<pre class="bash"><code>R -e &#39;rmarkdown::render(&quot;code/SLMAP_visualization.Rmd&quot;, output_dir=&quot;results/reports/&quot;)&#39;</code></pre>
+<p>Results:</p>
+<ul>
+<li><code>results/figures/IsoformSwitchAnalyzeR/SLMAP_ed.pdf</code>- manually edited plot.</li>
+</ul>
 </div>
 
 

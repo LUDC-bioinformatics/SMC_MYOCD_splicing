@@ -55,8 +55,9 @@ Create *switchAnalyzeRlist*:
 ```{r}
 myDesign <- data.frame(
     sampleID = colnames(salmonQuant$abundance)[-1],
-    condition = substr(colnames(salmonQuant$abundance)[-1], 1, 3)
+    condition = c(rep('Null', 4), rep('MYOCD', 4))
 )
+myDesign$condition <- relevel(myDesign$condition, ref = "Null")
 
 aSwitchList <- importRdata(
     isoformCountMatrix   = salmonQuant$counts,
@@ -188,7 +189,7 @@ aSwitchListFilteredAnalyzed <- analyzeAlternativeSplicing(
 
 ```{r, echo=FALSE, eval=TRUE}
 rdname <- paste(dir.table, "IsoformSwitchAnalyzeR.RData", sep="/")
-# save.image()
+# save.image(rdname)
 if (file.exists(rdname)){
   load(rdname)
   knitr::opts_chunk$set(eval=FALSE)
@@ -310,13 +311,24 @@ switchPlot(aSwitchListFilteredAnalyzed, gene = 'MYLK')
 switchPlot(aSwitchListFilteredAnalyzed, gene = 'MYH11')
 ```
 
+```{r, eval=FALSE, echo=FALSE, message=FALSE}
+# to make PDF flot for MYLK
+svg('results/figures/IsoformSwitchAnalyzeR/MYLK.svg', width = 10, height = 7)
+switchPlot(aSwitchList, gene = 'MYLK')
+dev.off()
+# SLMAP
+svg('results/figures/IsoformSwitchAnalyzeR/SLMAP.svg', width = 10, height = 7)
+switchPlot(aSwitchList, gene = 'SLMAP')
+dev.off()
+```
+
 Visualize all significant genes:
 
 ```{r, eval=F}
 dir.create(dir.fig, showWarnings = F)
 switchPlotTopSwitches(
     switchAnalyzeRlist = aSwitchListFilteredAnalyzed, 
-    n = Inf,                                             # Set to Inf for all
+    n = Inf,                                            # Set to Inf for all
     filterForConsequences = F,
     fileType = "png",                                   # alternative is "pdf"
     pathToOutput = dir.fig
@@ -340,7 +352,6 @@ Abbreviation:
   - **A5**: Alternative 5'end donor site. Compared to the hypothetical pre-RNA an alternative 5'end donor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more upstream than the the pre-RNA (the upstream exon is shorter).
 
   - **A3**: Alternative 3'end acceptor site. Compared to the hypothetical pre-RNA an alternative 3'end acceptor site was used. Since it is compared to the pre-RNA, the donor site used is per definition more downstream than the the pre-RNA (the downstream exon is shorter).
-
 
   - **ATSS**: Alternative Transcription Start Sites. Compared to the hypothetical pre-RNA an alternative transcription start sites was used. Since it is compared to the pre-RNA, the ATSS site used is per definition more downstream than the pre-RNA .
 

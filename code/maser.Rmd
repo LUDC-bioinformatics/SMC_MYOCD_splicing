@@ -115,7 +115,7 @@ Venn diagram
 types <- c('A3SS', 'A5SS', 'SE', 'RI', 'MXE')
 numbers <- c(12, 23, 146, 36, 22)
 
-colors5 <- brewer.pal(5, 'Accent')
+colors5 <- brewer.pal(11, 'BrBG')[c(6:11)]
 piepercent <- round(100*numbers/sum(numbers), 0)
 types <- paste(as.character(piepercent), "% ", types, sep="")
 

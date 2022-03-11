@@ -239,14 +239,20 @@ DEXSeq_rMATS_SE_unique <- DEXSeq_rMATS_SE[
 # correct sign
 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference <-
    DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference*-1
-plot(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
-     DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference,
-     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="SE")
-abline(lm(rMATS_SE_IncLevelDifference~DEXSeq_log2fold_treatment_control, data=DEXSeq_rMATS_SE_unique))
-legend('topleft', legend = paste('rho = ',
-       round(cor(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
-                 DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference, method = "spearman"), 2), sep = ""),
-       bty='n', bg='white', cex= 1)
+
+pdf('results/figures/SE_cor.pdf', width = 5, height = 4)
+   plot(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
+        DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference,
+        xlab="DEXSeq log2FC", ylab="SE rMATS IncLevelDifference",
+        cex=1.1, pch=16)
+   abline(lm(rMATS_SE_IncLevelDifference~DEXSeq_log2fold_treatment_control,
+             data=DEXSeq_rMATS_SE_unique), lty=2)
+   legend('topleft', legend = paste('r = ',
+          round(cor(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
+                    DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference), 2), sep = ""),
+          bty='n', bg='white', cex= 1)
+dev.off()
+
 cor.test(DEXSeq_rMATS_SE_unique$DEXSeq_log2fold_treatment_control,
                  DEXSeq_rMATS_SE_unique$rMATS_SE_IncLevelDifference, method = "spearman")
 ```
@@ -443,17 +449,21 @@ which(DEXSeq_rMATS_RI$DEXSeq_start==DEXSeq_rMATS_RI$rMATS_RI_start)
 Relationship in results
 
 ```{r}
-plot(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
-     DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference,
-     xlab="DEXSeq log2FC", ylab="rMATS IncLevelDifference", main="RI")
+pdf('results/figures/RI_cor.pdf', width = 5, height = 4)
+   plot(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
+        DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference,
+        xlab="DEXSeq log2FC", ylab="RI rMATS IncLevelDifference",
+        cex=1.1, pch=16)
+   abline(lm(rMATS_RI_IncLevelDifference~DEXSeq_log2fold_treatment_control,
+             data=DEXSeq_rMATS_RI), lty=2)
+   legend('topleft', legend = paste('r = ',
+          round(cor(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
+                    DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference), 2), sep = ""),
+          bty='n', bg='white', cex= 1)
+dev.off()
 
-abline(lm(rMATS_RI_IncLevelDifference~DEXSeq_log2fold_treatment_control, data=DEXSeq_rMATS_RI))
-legend('topleft', legend = paste('rho = ',
-       round(cor(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
-                 DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference, method = "spearman"), 2), sep = ""),
-       bty='n', bg='white', cex= 1)
 cor.test(DEXSeq_rMATS_RI$DEXSeq_log2fold_treatment_control,
-                 DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference, method = "spearman")
+                 DEXSeq_rMATS_RI$rMATS_RI_IncLevelDifference)
 ```
 
 ### rMATS_RI vs ISA

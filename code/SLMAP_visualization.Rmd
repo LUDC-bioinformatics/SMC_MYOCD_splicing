@@ -1,0 +1,192 @@
+---
+title: "Myocardin splicing: SLMAP"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+      
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=FALSE, fig.width = 10)
+knitr::opts_knit$set(root.dir = '../')
+``` 
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(ggplot2)
+library(IsoformSwitchAnalyzeR)
+```
+
+## SMAP transripts
+
+Extract SLMAP from DEXseq:
+
+```{bash}
+head -n 1 results/tables/DEXSeq/DEXSeq_results.csv | \
+   sed 's/"//g' > intermediate/DEXSeq_results_SLMAP.csv
+grep SLMAP results/tables/DEXSeq/DEXSeq_results.csv | \
+   sed 's/"//g' >> intermediate/DEXSeq_results_SLMAP.csv
+```
+
+Get the up- and down-regulated exons:
+
+```{bash}
+awk -F '\t' '$7<=0.01 && $10<0 {print $24}' intermediate/DEXSeq_results_SLMAP.csv | \
+   sed 's/c(//g;s/, /\n/g;s/)//g' | \
+   sort -u \
+   > intermediate/DEXSeq_results_SLMAP_exons_down.txt
+
+awk -F '\t' '$7<=0.01 && $10>0 {print $24}' intermediate/DEXSeq_results_SLMAP.csv | \
+   sed 's/c(//g;s/, /\n/g;s/)//g;s/"//g' | \
+   sort -u \
+   > intermediate/DEXSeq_results_SLMAP_exons_up.txt
+```
+
+Find the transripts that are differentially regulated and not overlap:
+
+```{r}
+u <- read.table('intermediate/DEXSeq_results_SLMAP_exons_up.txt', stringsAsFactors=F)$V1
+d <- read.table('intermediate/DEXSeq_results_SLMAP_exons_down.txt', stringsAsFactors=F)$V1
+u_uniq <- setdiff(u, d)
+d_uniq <- setdiff(d, u)
+write(u_uniq, 'intermediate/DEXSeq_results_SLMAP_exons_up_uniq.txt')
+write(d_uniq, 'intermediate/DEXSeq_results_SLMAP_exons_down_uniq.txt')
+```
+
+Get the fold-change for the exons from these transripts:
+
+```{r}
+dat <- read.table('intermediate/DEXSeq_results_SLMAP.csv', header = T, sep = "\t")
+dat_sign_up <- dat[which(dat$padj<0.01 & dat$log2fold_treatment_control>0),]
+dat_sign_down <- dat[which(dat$padj<0.01 & dat$log2fold_treatment_control<0),]
+
+fc_up <- dat_sign_up$log2fold_treatment_control[
+                     grep(paste(u_uniq, collapse="|"), dat_sign_up$transcripts)]
+
+fc_down <- dat_sign_down$log2fold_treatment_control[
+                     grep(paste(d_uniq, collapse="|"), dat_sign_down$transcripts)]
+fc_up_down <- data.frame(regulation=c(rep("up", length(fc_up)),
+                                      rep("down", length(fc_down))),
+                         FC=c(fc_up,fc_down))
+mean(fc_down)
+mean(fc_up)
+```
+
+Plot exon expression
+
+```{r}
+svg('results/figures/SLMAP_exon_FC.svg', width = 4.5, height = 3.5)
+ggplot(fc_up_down) +
+   geom_point(aes(x = regulation,
+                  y = FC,                       
+                  color = regulation,
+                  shape= regulation),
+                  position=position_jitter(w=0.1)) +
+   geom_hline(yintercept=0, color="grey", linetype="dotted") +
+   scale_x_discrete(labels=c("early exons", "late exons")) +
+   ylab("log2(fold change)") +
+   ggtitle("SLMAP expression") +
+   theme_bw()
+dev.off()
+```
+
+
+## Mass
+
+These are the transripts that are most likely differentially regulated by MYOCD
+according to their mass:
+
+![SLMAP mass](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/SLMAP_mass.png)
+
+ENST00000438794 - 36.3 kDa
+ENST00000494088 - 41.9 kDa
+
+ENST00000417128 - 64.3 kDa
+
+ENST00000428312 - 85.9 kDa
+ENST00000449503 - 90.8 kDa 
+ENST00000295951 - 93.2 kDa 
+ENST00000295952 - 93.2 kDa
+ENST00000659705 - 95.2 kDa
+ENST00000671191 - 96.9 kDa
+
+![SLMAP_candidates](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/SLMAP_candidates.png)
+
+ENST00000428312, ENST00000449503, ENST00000295952 start later than other stransripts and since earlier transripts show differential expression I assume these transcripts are less likely to be affected.
+
+ENST00000659705 and ENST00000671191 do not show overlap with other transripts at later 
+exons and these exons show no differential expression, I drop them as candidates.
+
+Thus, these transripts are the best candidates:
+
+ENST00000438794 - 36.3 kDa
+ENST00000494088 - 41.9 kDa
+
+ENST00000417128 - 64.3 kDa 
+ENST00000295951 - 93.2 kDa 
+
+## IsoformSwitchAnalyzeR
+
+Create a fake expression table:
+
+```{r}
+transripts <- unique(c(u, d))
+transripts <- transripts[grep("ENST00000438794|ENST00000494088|ENST00000417128|ENST00000295951", transripts)]
+samples <- c('CMV1', 'CMV2', 'CMV4', 'CMV5', 'MYO1', 'MYO2', 'MYO4', 'MYO5')
+counts <- data.frame(matrix(nrow = length(transripts), ncol = length(samples)))
+colnames(counts) <- c(samples)
+rownames(counts) <- transripts
+counts[c(1:2),] <- c(rep(1000, 4*2), rep(10, 4*2))
+counts[c(3:4),] <- c(rep(10, 4*2), rep(1000, 4*2))
+counts
+```
+
+Create a reduced annotation:
+
+```{bash}
+cat intermediate/DEXSeq_results_SLMAP_exons_up.txt \
+  intermediate/DEXSeq_results_SLMAP_exons_down.txt | \
+  sort -u > intermediate/DEXSeq_results_SLMAP_exons_up_down.txt
+grep -f intermediate/DEXSeq_results_SLMAP_exons_up_down.txt \
+  data/reference/gencode.v35.primary_assembly.annotation.gtf \
+  > intermediate/DEXSeq_results_SLMAP_exons_up_down.gtf
+grep -E 'ENST00000438794|ENST00000494088|ENST00000417128|ENST00000295951' \
+  intermediate/DEXSeq_results_SLMAP_exons_up_down.gtf \
+  > intermediate/DEXSeq_results_SLMAP_exons_up_down2.gtf
+```
+
+Create *switchAnalyzeRlist*:
+
+```{r, message=F, error=FALSE}
+myDesign <- data.frame(
+    sampleID = samples,
+    condition = c(rep('Null', 4), rep('MYOCD', 4))
+)
+myDesign$condition <- relevel(myDesign$condition, ref = "Null")
+
+aSwitchList <- importRdata(
+    isoformCountMatrix   = counts,
+    designMatrix         = myDesign,
+    isoformExonAnnoation = "intermediate/DEXSeq_results_SLMAP_exons_up_down2.gtf",
+    showProgress = F
+)
+```
+
+Visualize:
+
+```{r, eval=TRUE}
+svg('results/figures/IsoformSwitchAnalyzeR/SLMAP.svg', width = 9, height = 3.5)
+# switchPlot()
+p <- switchPlotTranscript(aSwitchList,
+          isoform_id = transripts,
+          IFcutoff = 0,
+          dIFcutoff = 0)
+print(p + geom_vline(xintercept=1080, color="grey", linetype="dotdash", size=1.1))
+dev.off()
+```

@@ -4,7 +4,7 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "14 februari, 2022"
+date: "11 mars, 2022"
 output:
   html_document:
     keep_md: true
@@ -335,5 +335,20 @@ Results:
 
    
 *Note, only the comparison DEXSeq bins to rMATS exons is reliable here. ISA is transcript based, so it cannot be directly compared to the exon-based results., but I included it for additional information.*
+
+## SLMAP
+
+SLMAP showed differential exon usage results, but it was not significant in the ISA.
+I try to create the ISA-like plot to reflect the differential exon usage results.
+
+
+```bash
+R -e 'rmarkdown::render("code/SLMAP_visualization.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+   - `results/figures/IsoformSwitchAnalyzeR/SLMAP_ed.pdf`- manually edited plot.
+
 
 
