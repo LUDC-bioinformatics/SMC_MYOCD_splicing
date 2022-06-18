@@ -8,6 +8,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     keep_md: true
+    toc: true
 ---
 
 ```{r setup, include=FALSE}
@@ -176,7 +177,7 @@ Results:
 
 - `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
 
-- `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correpondance between the DEXSeq bins and real exons.
+- `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correspondence between the DEXSeq bins and real exons.
 
 Results interpretation
 
@@ -339,6 +340,25 @@ Results:
 
    - `results/figures/IsoformSwitchAnalyzeR/SLMAP_ed.pdf`- manually edited plot.
 
+
+## MSAT
+
+To infer some in vivo results, we look at the correlation of MYOCD with
+exons of a few genes of interest in the MSAT data as well as correlation in
+the fold change between two datasets. In the MSAT data, I compared two groups that had
+high and low expression of MYOCD.
+
+```{bash}
+R -e 'rmarkdown::render("code/DEXSeq_MSAT.Rmd", output_dir="results/reports/")'
+R -e 'rmarkdown::render("code/MSAT_correlation_MYOCD.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+   - `results/reports/MSAT_correlation_MYOCD.html`- results.
+   
+Unfortunately, the signal is very weak.
+   
 
 ```{bash, include=FALSE, eval=FALSE}
 rsync -aAXv --dry-run --progress -e 'ssh -p 22022' \

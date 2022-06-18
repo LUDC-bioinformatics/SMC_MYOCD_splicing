@@ -1,0 +1,232 @@
+---
+title: "Myocardin splicing: MYOCD in the MSAT tpm"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+```
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(ggplot2)
+```
+
+## Functions
+
+```{r}
+plotCor <- function(exon){
+  #exon <- 'ENSE00002324197'
+  myocd <- colSums(d[d$gene=='ENSG00000141052',-c(1:7)] )
+  if (exon %in% rownames(tpm)){
+    exonD <- tpm[exon,]
+    exonD[exonD == 0] <- NA
+    df <- data.frame(MYOCD=myocd,
+                    target_exon=exonD,
+                    tissue=meta$RNA_Type)
+    
+    dp <- ggplot(df, aes(x=MYOCD, y=target_exon, colour=tissue)) +
+          geom_point() +
+          geom_smooth(method='lm', se=F) +
+          geom_smooth(method='lm', se=F, inherit.aes = F, aes(MYOCD, target_exon), colour='black') +
+          theme_minimal() +
+          ggtitle(exon)
+    
+    ctg <- by(df, df$tissue, FUN = function(X) cor.test(X$MYOCD, X$target_exon, method = "spearman"))
+    ct <- cor.test(df$MYOCD, df$target_exon, method = "spearman")
+    plot(dp)
+    
+    print("correlations within groups:")
+    print(ctg)
+    print("correlations across all samples:")
+    print(ct)
+  }else{
+    print(paste(exon, "is not expressed."))
+  }
+}
+
+plotFC <- function(feature){
+  # feature <- 'ENSG00000258967.1_HMGN1P3+ENSG00000072110.14_ACTN1'
+  msatPlot <- msat[msat$groupID==feature,]
+  myocdFCplot <- myocdFC[myocdFC$groupID==feature,]
+  myocdFCplot$toHighlight <- "black"
+  signPoints <- which(myocdFCplot$padj<=0.05)
+  myocdFCplot$toHighlight[signPoints] <- "red"
+  
+  myocdFCplot$featureIDplot <- ""
+  myocdFCplot$featureIDplot[signPoints] <- as.character(myocdFCplot$featureID[signPoints])
+
+  plot(msatPlot$log2fold_up_down, myocdFCplot$log2fold_treatment_control,
+       xlab = "MSAT", ylab = "myocardin", main = feature,
+       col=myocdFCplot$toHighlight, pch=19)
+  text(msatPlot$log2fold_up_down, myocdFCplot$log2fold_treatment_control,
+       myocdFCplot$featureIDplot, pos=1, col="darkgrey", cex = 0.7)
+  abline(lm(myocdFCplot$log2fold_treatment_control~msatPlot$log2fold_up_down))
+  abline(lm(
+    myocdFCplot$log2fold_treatment_control[signPoints]~msatPlot$log2fold_up_down[signPoints]
+    ), col = "red")
+  legend('topleft', c('non-sing', 'sing in myocardin'),
+         col=1:length(myocdFCplot$toHighlight), pch=19)
+  cor.test(msatPlot$log2fold_up_down, myocdFCplot$log2fold_treatment_control, method = 'spearman')
+}
+```
+
+## Exon expression correlation
+
+### Data
+
+Load meta:
+
+```{r}
+meta <- read.table('data/MSAT_samples_RNA_seq.csv',
+                   header = T)
+row.names(meta) <- meta$ID_Nr_RNA_Seq
+```
+
+Load the exon data:
+
+```{r, message=FALSE}
+d <- read.table('data/MSAT_exons_raw_counts.csv', header=T, check.names=F)
+rownames(d) <- d$exon
+#head(d)
+```
+
+TPM normalize exon counts:
+
+```{r}
+counts <- d[,-c(1:7)]
+counts_length <- counts/d$Length
+tpm <- t(t(counts_length)*1e6/colSums(counts_length))
+```
+
+Do meta and TPM names match?
+
+```{r}
+all(colnames(tpm)==meta$ID_Nr_RNA_Seq)
+```
+
+Get DEXSeq bin-to-exon info:
+
+```{bash, eval = F}
+mkdir -p intermediate/MSAT_correlation_MYOCD/
+grep -E "ENSG00000072110|DEXSeq_groupID" results/tables/DEXSeq/DEXSeq_results_bins2exons.csv \
+  > intermediate/MSAT_correlation_MYOCD/ACTN1_bins2exons.csv
+grep -E "ENSG00000152601|DEXSeq_groupID" results/tables/DEXSeq/DEXSeq_results_bins2exons.csv \
+  > intermediate/MSAT_correlation_MYOCD/MBNL1_bins2exons.csv
+grep -E "ENSG00000035403|DEXSeq_groupID" results/tables/DEXSeq/DEXSeq_results_bins2exons.csv \
+  > intermediate/MSAT_correlation_MYOCD/VCL_bins2exons.csv
+grep -E "ENSG00000058272|DEXSeq_groupID" results/tables/DEXSeq/DEXSeq_results_bins2exons.csv \
+  > intermediate/MSAT_correlation_MYOCD/PPP1R12A_bins2exons.csv
+```
+
+
+### ACTN1 - ENSG00000072110
+
+ACTN1 shows DEU in E012, E014, E015, E016, E017, E019. I checked correlation for these exons.
+
+Find exons:
+
+```{bash}
+grep -E "E012|E014|E015|E016|E017|E019" intermediate/MSAT_correlation_MYOCD/ACTN1_bins2exons.csv | cut -f 8 | sort -u | sed 's/\..*//g;s/"//g'
+```
+
+Plot them
+
+```{r, message=F}
+exons <- c('ENSE00001518409', 'ENSE00002324197', 'ENSE00002456450',
+           'ENSE00002462848', 'ENSE00002470358', 'ENSE00003470414',
+           'ENSE00003626569', 'ENSE00003643367', 'ENSE00003675586')
+for (i in exons){
+    plotCor(i)
+}
+```
+
+`ENSE00002456450` overlaps both E012 and E014 that are differently regulated.
+  - E012 is up-regulated
+  - E014 is down-regulated by MYOCD.
+
+`ENSE00002456450` overlaps only E019 that is up-regulated by MYOCD.
+
+
+Control first exon E002-E008:
+
+```{r}
+plotCor('ENSE00001167970')
+```
+
+Control last exon:
+
+```{r, message=F}
+plotCor('ENSE00001167977')
+plotCor('ENSE00002448527')
+```
+
+Expression correlation doesn't work because it is impossible to distinguish DE from DEU.
+
+## Exon fold change correlation
+
+### Data
+
+MSAT data
+
+```{r}
+msat <- read.table('results/tables/DEXSeq_MSAT/DEXSeq_MSAT_results.csv',
+                   header = T, sep = '\t')[,c(1:10)]
+rownames(msat) <- paste(msat$groupID, msat$featureID, sep = ":")
+```
+
+Myocardin data
+
+```{r}
+myocdFC <- read.table('results/tables/DEXSeq/DEXSeq_results.csv',
+                      header = T, sep = '\t')
+rownames(myocdFC) <- paste(myocdFC$groupID, myocdFC$featureID, sep = ":")
+```
+
+Select only overlapping features:
+
+```{r}
+myocdFC <- myocdFC[which(rownames(myocdFC) %in% rownames(msat)), c(1:10)]
+all(rownames(myocdFC)==rownames(msat))
+```
+
+### Correlate
+
+Get gene names:
+
+```{r}
+unique(as.character(msat$groupID))
+```
+
+ACTN1
+
+```{r}
+plotFC('ENSG00000258967.1_HMGN1P3+ENSG00000072110.14_ACTN1')
+```
+
+VCL
+
+```{r}
+plotFC('ENSG00000035403.18_VCL')
+```
+
+MBNL1
+
+```{r}
+plotFC('ENSG00000152601.17_MBNL1')
+```
+
+PPP1R12A
+
+```{r}
+plotFC('ENSG00000058272.19_PPP1R12A')
+```
