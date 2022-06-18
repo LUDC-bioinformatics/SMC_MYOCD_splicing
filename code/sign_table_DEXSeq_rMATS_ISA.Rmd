@@ -1,0 +1,52 @@
+---
+title: "Myocardin splicing: one table of significant DEXSeq rMATS ISA results"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+knitr::opts_knit$set(root.dir = '../')
+```
+
+## DEXSeq
+
+```{r}
+dexseq <- read.table('results/tables/DEXSeq/DEXSeq_results_TPM.csv', header = T, sep = '\t')
+dexseq_geneFDR <- read.table('results/tables/DEXSeq/DEXSeq_results_geneFDR.csv', header = T, sep = '\t')
+dexseq_sing <- dexseq[which(dexseq$padj<=0.01),]
+dexseq_geneFDRgenes <- dexseq_geneFDR$gene[which(dexseq_geneFDR$gene_level_FDR<=0.01)]
+dexseq_singFDR <- dexseq_sing[dexseq_sing$groupID %in% dexseq_geneFDRgenes, ]
+dim(dexseq_singFDR)[1]
+```
+
+### Isoform Switch Analysis
+
+Isoform Switch Analysis (ISA)
+
+```{r}
+ISA <- read.table('results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis.csv', header = T, sep = '\t')
+ISA <- ISA[ISA$padj<=0.05, ]
+```
+
+### Write tables
+
+```{r}
+write.table(dexseq_singFDR,
+            'results/tables/DEXSeq/DEXSeq_results_sign0.01_geneFDR.csv',
+            quote = F,
+            row.names = F,
+            sep = '\t')
+write.table(ISA,
+            'results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis_sign0.05.csv',
+            quote = F,
+            row.names = F,
+            sep = '\t')
+```
