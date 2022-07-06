@@ -4,10 +4,11 @@ author:
    name: "Dmytro Kryvokhyzha"
    email: dmytro.kryvokhyzha@med.lu.se
    affiliation: LUDC Bioinformatics Unit
-date: "11 mars, 2022"
+date: "06 juli, 2022"
 output:
   html_document:
     keep_md: true
+    toc: true
 ---
 
 
@@ -179,7 +180,7 @@ Results:
 
 - `results/tables/DEXSeq/genelevel_FDR.csv` - gene-level FDR values.
 
-- `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correpondance between the DEXSeq bins and real exons.
+- `results/tables/DEXSeq/DEXSeq_results_bins2exons.csv` - correspondence between the DEXSeq bins and real exons.
 
 Results interpretation
 
@@ -350,5 +351,20 @@ Results:
 
    - `results/figures/IsoformSwitchAnalyzeR/SLMAP_ed.pdf`- manually edited plot.
 
+## GTEx
+
+I use the GTEx data to verify some of our results.
+
+
+```bash
+R -e 'rmarkdown::render("code/GTEx.Rmd", output_dir="results/reports/")'
+```
+
+Results:
+
+   - `results/reports/GTEx.html`- report.
+   - `results/tables/GTEx/GTEx_key_gene_correlation_with_MYOCD.csv` - correlation of key genes with MYOCD.
+   - `results/tables/GTEx/GTEx_RBPMS_correlation_with_MYOCD.csv` - correlation of MYOCD "exon2a" variation with RBPMS.
+   
 
 

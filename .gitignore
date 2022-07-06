@@ -4,3 +4,4 @@
 notes
 *.xlsx
 .snakemake
+.Rproj.user

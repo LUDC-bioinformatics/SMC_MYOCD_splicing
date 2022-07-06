@@ -340,24 +340,19 @@ Results:
 
    - `results/figures/IsoformSwitchAnalyzeR/SLMAP_ed.pdf`- manually edited plot.
 
+## GTEx
 
-## MSAT
-
-To infer some in vivo results, we look at the correlation of MYOCD with
-exons of a few genes of interest in the MSAT data as well as correlation in
-the fold change between two datasets. In the MSAT data, I compared two groups that had
-high and low expression of MYOCD.
+I use the GTEx data to verify some of our results.
 
 ```{bash}
-R -e 'rmarkdown::render("code/DEXSeq_MSAT.Rmd", output_dir="results/reports/")'
-R -e 'rmarkdown::render("code/MSAT_correlation_MYOCD.Rmd", output_dir="results/reports/")'
+R -e 'rmarkdown::render("code/GTEx.Rmd", output_dir="results/reports/")'
 ```
 
 Results:
 
-   - `results/reports/MSAT_correlation_MYOCD.html`- results.
-   
-Unfortunately, the signal is very weak.
+   - `results/reports/GTEx.html`- report.
+   - `results/tables/GTEx/GTEx_key_gene_correlation_with_MYOCD.csv` - correlation of key genes with MYOCD.
+   - `results/tables/GTEx/GTEx_RBPMS_correlation_with_MYOCD.csv` - correlation of MYOCD "exon2a" variation with RBPMS.
    
 
 ```{bash, include=FALSE, eval=FALSE}

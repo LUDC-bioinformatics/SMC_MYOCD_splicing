@@ -1,0 +1,1680 @@
+---
+title: "Myocardin splicing: analysis of the GTEx data"
+author:
+   name: "Dmytro Kryvokhyzha"
+   email: dmytro.kryvokhyzha@med.lu.se
+   affiliation: LUDC Bioinformatics Unit
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, eval=TRUE)
+```
+
+I use the GTEx data to verify some of our results.
+
+Ideas to test:
+
+  - Does SMC MYOCD without exon 2a correlate better with RBPMS than does MYOCD including exon 2a?
+    Result: exon 2a is extremely lowly expressed. In our data it mostly has 0 expression.
+
+  - Is there negative correlation between MYOCD and usage of two 36 bp and 95 bp exons in MBNL1 that we identified in DEXSeq/rMATS
+
+  - MYOCD should correlate negatively with usage of an exon that encodes a Ca2+-binding domain in ACTN1.
+
+## Dependencies
+
+```{r, message=FALSE, eval=TRUE}
+library(DEXSeq)
+library(RColorBrewer)
+library(arrow) # to read parquet
+library(cocor)
+```
+
+## Functions
+
+```{r, eval=TRUE}
+extract_columns <- function(tissue){
+  # tissue <- 'aorta'
+  meta_tissue <- get(paste('meta_', tissue, sep = ""))
+  tissue_head <- c(1,2, which(names(transcript_head) %in% meta_tissue))
+  transcript_head_tissue <- paste('zcat intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.gct.gz | cut -f ',
+                          paste(tissue_head, collapse = ','),
+                          '| grep -E "transcript_id|',
+                          paste(genes_interest, collapse = "|"),
+                          '" > ',
+                          paste('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.',
+                                tissue, '.csv', sep = ""), sep = "")
+  write(transcript_head_tissue,
+        paste('intermediate/GTEx/transcript_head_', tissue,'.sh', sep = ""))
+}
+
+check_transcript <- function(transcript, transcript_data){
+  #transcript <- 'ENST00000425538.5'
+  tr <- as.numeric(transcript_data[transcript_data$transcript_id == transcript,-c(1,2)])
+  names(tr) <- names(transcript_data[-c(1,2)])
+  # par(mfrow=c(1,2))
+  # hist(tr, breaks = 100, main = transcript, xlab = "TPM")
+  # hist(log10(tr), breaks = 100, main = transcript, xlab = "log10(TPM)")
+  return(tr)
+}
+
+cocor_test <- function(transcript_myocd, transcript1, transcript2, alternative){
+  # transcript_myocd <- 'MYOCD_aorta_gene'
+  # transcript1 <- 'MYLK_aorta_ENST00000354792.9'
+  # transcript2 <- 'MYLK_aorta_ENST00000578202.1'
+  # alternative <- 'greater'
+
+  tr_myocd <- get(transcript_myocd)
+  tr1 <- get(transcript1)
+  tr2 <- get(transcript2)
+  # no0expression <- which(tr1!=0 & tr2!=0 & tr_myocd!=0)
+  # tr_myocd <- tr_myocd[no0expression]
+  # tr1 <- tr1[no0expression]
+  # tr2 <- tr2[no0expression]
+  r.jk <- cor(tr_myocd, tr1, method = "spearman")
+  r.jh <- cor(tr_myocd, tr2, method = "spearman")
+  r.kh <- cor(tr1, tr2, method = "spearman")
+  cocor_resAll <- cocor.dep.groups.overlap(r.jk=r.jk, r.jh=r.jh, r.kh=r.kh, n = length(tr_myocd),
+                     alternative = alternative,
+                     test = "dunn1969",
+                     return.htest=T)
+  cocor_res <- c(round(cocor_resAll$dunn1969$estimate[1], 4),
+                 round(cocor_resAll$dunn1969$estimate[2], 4),
+                 cocor_resAll$dunn1969$p.value)
+  names(cocor_res) <- c(paste(transcript1, 'r', sep = "_"),
+                        paste(transcript2, 'r', sep = "_"),
+                        paste(transcript1, 'vs', transcript2, 'pvalue', sep = "_"))
+  # plot
+  par(mfrow=c(1,2))
+  trcor1 <- cor.test(tr_myocd, tr1, method = "spearman")
+  trcor2 <- cor.test(tr_myocd, tr2, method = "spearman")
+  
+  myocdLog <- log10(tr_myocd+1)
+  tr1log <- log10(tr1+1)
+  tr2log <- log10(tr2+1)
+  
+  trlm1 <- lm(tr1log~myocdLog)
+  trlm2 <- lm(tr2log~myocdLog)
+
+  plot(myocdLog, tr1log, pch=19, col="grey",
+       xlab = transcript_myocd,
+       ylab = transcript1)
+  abline(trlm1)
+  legend('topleft',
+         c(paste('rho=', round(trcor1$estimate, 3), sep = ""),
+         paste('pval=', trcor1$p.value, sep = "")
+         ))
+  
+  plot(myocdLog, tr2log, pch=19, col="grey",
+       xlab = transcript_myocd,
+       ylab = transcript2)
+  abline(trlm2)
+  legend('topleft',
+         c(paste('rho=', round(trcor2$estimate, 3), sep = ""),
+         paste('pval=', trcor2$p.value, sep = "")
+         ))
+  return(cocor_res)
+}
+
+cor_transripts <- function(gene, feature1, feature2, hypothesis){
+  # gene <- 'MYLK'
+  # feature1 <- 'ENST00000578202.1'
+  # feature2 <- 'ENST00000354792.9'
+  # hypothesis <- "greater"
+  par(mfrow=c(1,2))
+  for (t in tissues){
+    # t <- 'aorta'
+    myocd_gene <- paste('MYOCD', t, 'gene', sep = "_")
+    transcript_data <- get(paste('transcript', t, sep = "_"))
+    for (f in c(feature1, feature2)){
+      transcriptDF <- as.numeric(transcript_data[transcript_data$transcript_id == f,-c(1,2)])
+      names(transcriptDF) <- names(transcript_data[-c(1,2)])
+      assign(paste(gene, t, f, sep = "_"), transcriptDF, envir = parent.frame())
+    }
+    # to append the results
+    cocor_res <- cocor_test(myocd_gene, paste(gene, t, feature1, sep = "_"),
+                                        paste(gene, t, feature2, sep = "_"), hypothesis)
+    
+    DFrowName <- paste(gene, t, feature1, feature2, sep = "_")
+    if (!(DFrowName %in% rownames(cocorResDF))){
+      cocorResDF[nrow(cocorResDF)+1,] <- 'NA'
+      rownames(cocorResDF)[nrow(cocorResDF)] <- DFrowName
+    }
+    cocorResDF[DFrowName,] <- c(t, gene,
+                                   feature1, feature2,
+                                   cocor_res[1], cocor_res[2],
+                                   cocor_res[3], hypothesis)
+  }
+  return(cocorResDF)
+}
+
+cor_exons <- function(gene, ensemblID, feature0, feature1, feature2, hypothesis){
+  # gene <- 'VCL'
+  # ensemblID <- 'ENSG00000035403.17'
+  # feature0 <- 23
+  # feature1 <- 22
+  # feature2 <- 24
+  # hypothesis <- "greater"
+  par(mfrow=c(1,3))
+  for (t in tissues){
+    myocd_gene <- paste('MYOCD', t, 'gene', sep = "_")
+    exon_data_tissue <- get(paste('exon', t, sep = "_"))
+    exon_data <- exon_data_tissue[which(exon_data_tissue$Description==gene),]
+    for (f in c(feature0, feature1, feature2)){
+      featureD <- as.numeric(exon_data[exon_data$Name==paste(ensemblID, f, sep = "_"),
+                                        -c(1:2)])
+      assign(paste(gene, t, 'exon', f, sep = "_"), featureD, envir = parent.frame())
+    }
+    # to append the results
+    for (feature in c(feature1, feature2)){
+      cocor_res <- cocor_test(myocd_gene, paste(gene, t, 'exon', feature0, sep = "_"),
+                                          paste(gene, t, 'exon', feature, sep = "_"),
+                              hypothesis)
+      
+      DFrowName <- paste(gene, t, 'exons', feature0, feature, sep = "_")
+      if (!(DFrowName %in% rownames(cocorResDF))){
+        cocorResDF[nrow(cocorResDF)+1,] <- 'NA'
+        rownames(cocorResDF)[nrow(cocorResDF)] <- DFrowName
+      }
+      cocorResDF[DFrowName,] <- c(t, gene,
+                                     paste('exon', feature0, sep = "_"),
+                                     paste('exon', feature, sep = "_"),
+                                     cocor_res[1], cocor_res[2],
+                                     cocor_res[3], hypothesis)
+    }
+  }
+  return(cocorResDF)
+}
+
+cor_junction <- function(gene, ensemblID, feature0, feature1, feature2, hypothesis){
+  # gene <- 'VCL'
+  # ensemblID <- 'ENSG00000035403.17'
+  # feature0 <- 26
+  # feature1 <- 25
+  # feature2 <- 27
+  # hypothesis <- 'less'
+  par(mfrow=c(1,3))
+  for (t in tissues){
+    myocd_gene <- paste('MYOCD', t, 'gene', sep = "_")
+    junction_data_tissue <- get(paste('junction', t, sep = "_"))
+    junction_data <- junction_data_tissue[which(junction_data_tissue$Description==ensemblID),]
+    for (feature in c(feature0, feature1, feature2)){
+      featureD <- as.numeric(junction_data[feature,-c(1,2)])
+      assign(paste(gene, t, 'junction', feature, sep = "_"), featureD, envir = parent.frame())
+    }
+    # to append the results
+    for (feature in c(feature1, feature2)){
+      cocor_res <- cocor_test(myocd_gene, paste(gene, t, 'junction', feature0, sep = "_"),
+                                          paste(gene, t, 'junction', feature, sep = "_"),
+                              hypothesis)
+      
+      DFrowName <- paste(gene, t, 'junctions', feature0, feature, sep = "_")
+      if (!(DFrowName %in% rownames(cocorResDF))){
+        cocorResDF[nrow(cocorResDF)+1,] <- 'NA'
+        rownames(cocorResDF)[nrow(cocorResDF)] <- DFrowName
+      }
+      cocorResDF[DFrowName,] <- c(t, gene,
+                                     paste('junction', feature0, sep = "_"),
+                                     paste('junction', feature, sep = "_"),
+                                     cocor_res[1], cocor_res[2],
+                                     cocor_res[3], hypothesis)
+    }
+  }
+  return(cocorResDF)
+}
+
+```
+
+## Data
+
+### To store results
+
+```{r, eval=TRUE}
+cocorResDF <- data.frame(matrix(ncol = 8, nrow = 0 ))
+colnames(cocorResDF) <- c('Tissue', 'Gene',
+                          'Feature1', 'Feature2',
+                          'Feature1_rho', 'Feature2_rho',
+                          'Pvalue', 'Hypothesis')
+cocorResRBPMS <- data.frame(matrix(ncol = 7, nrow = 0 ))
+colnames(cocorResRBPMS) <- c('Tissue',
+                             'MYOCD Feature1 with exon 2a', 'MYOCD Feature2 without exon 2a',
+                             'Feature1_rho', 'Feature2_rho',
+                             'Pvalue', 'Hypothesis')
+			
+
+```
+
+### Download GTEx
+
+```{bash, eval=F}
+mkdir -p intermediate/GTEx/
+
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_artery_aorta.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_artery_coronary.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_artery_tibial.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_esophagus_muscularis.gct.gz -P intermediate/GTEx/
+
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_STARv2.5.3a_junctions.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_expected_count.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.gct.gz -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.parquet -P intermediate/GTEx/
+# meta
+wget https://storage.googleapis.com/gtex_analysis_v8/annotations/GTEx_Analysis_v8_Annotations_SampleAttributesDD.xlsx -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/annotations/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDD.xlsx -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/annotations/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt -P intermediate/GTEx/
+wget https://storage.googleapis.com/gtex_analysis_v8/annotations/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt -P intermediate/GTEx/
+```
+
+### Meta
+
+```{r}
+meta <- read.delim('intermediate/GTEx/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt',
+                   header = T, stringsAsFactors = F)
+tissues <- c('aorta', 'coronary', 'tibial', 'esophagus')
+#dim(meta)
+```
+
+Select artery samples:
+
+```{r}
+meta_aorta <- meta$SAMPID[which(meta$SMTSD=="Artery - Aorta")]
+meta_tibial <- meta$SAMPID[which(meta$SMTSD=="Artery - Tibial")]
+meta_coronary <- meta$SAMPID[which(meta$SMTSD=="Artery - Coronary")]
+meta_esophagus <- meta$SAMPID[which(meta$SMTSD=="Esophagus - Muscularis")]
+length(meta_aorta)
+length(meta_tibial)
+length(meta_coronary)
+length(meta_esophagus)
+```
+
+### Our data
+
+#### DEXSeq
+
+```{r}
+dexseq <- read.table('results/tables/DEXSeq/DEXSeq_results.csv', header = T, sep = '\t')
+```
+
+#### ISA
+
+```{r, eval=F}
+ISA <- read.table('results/tables/IsoformSwitchAnalyzeR/isoformSwitchAnalysis.csv',
+                  header = T, sep = '\t')
+colnames(ISA)[1] <- 'transcript'
+```
+
+#### rMATS
+
+```{r}
+for (i in c('SE', 'A5SS', 'A3SS', 'MXE', 'RI')){
+  rMATS <- read.table(paste('results/tables/rMATS/rMATS_all_' , i, '.csv', sep=""),
+                            header = T, sep = '\t')
+  assign(paste('rMATS', i, sep="_"), rMATS)
+}
+rm(rMATS)
+```
+
+### GTEx
+
+#### Gene TPM
+
+Genes of interest:
+
+```{r, eval=TRUE}
+genes_interest <- c('ENSG00000141052', 'ENSG00000072110', 'ENSG00000152601',
+                    'ENSG00000035403', 'ENSG00000058272', 'ENSG00000065534',
+                    'ENSG00000076706', 'ENSG00000163681', 'ENSG00000122786',
+                    'ENSG00000142949', 'ENSG00000095637', 'ENSG00000140416',
+                    'ENSG00000157110', 'ENSG00000166831', 'ENSG00000100320',
+                    'ENSG00000128606', 'ENSG00000120693')
+symbol_interest <- c('MYLK', 'MBNL1', 'MCAM', 'ACTN1', 'SLMAP', 'CALD1',
+                     'VCL', 'PTPRF', 'PPP1R12A', 'SORBS1', 'TPM1', 'RBPMS',
+                     'RBPMS2', 'RBFOX2', 'MYOCD',
+                     'LRRC17', 'SMAD9')
+```
+
+Load the TPM data:
+
+```{r, message=FALSE}
+gene_aorta <- read.table(gzfile('intermediate/GTEx/gene_tpm_2017-06-05_v8_artery_aorta.gct.gz'),
+                      header=T, check.names=F, sep = "\t", skip = 2)
+gene_coronary <- read.table(gzfile('intermediate/GTEx/gene_tpm_2017-06-05_v8_artery_coronary.gct.gz'),
+                      header=T, check.names=F, sep = "\t", skip = 2)
+gene_tibial <- read.table(gzfile('intermediate/GTEx/gene_tpm_2017-06-05_v8_artery_tibial.gct.gz'),
+                      header=T, check.names=F, sep = "\t", skip = 2)
+gene_esophagus <- read.table(gzfile('intermediate/GTEx/gene_tpm_2017-06-05_v8_esophagus_muscularis.gct.gz'),
+                      header=T, check.names=F, sep = "\t", skip = 2)
+```
+
+#### Transcript TPM
+
+Find column numbers and subset the data because the full dataset doesn't load.
+
+```{r, eval=F}
+transcript_head <- read.delim(gzfile('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.gct.gz'),
+                         header = T, skip = 2, check.names = F, nrows = 1)
+```
+
+Create bash file to extract these columns and genes:
+
+```{r, eval=F}
+for (t in tissues){
+  extract_columns(t)
+}
+```
+
+Execute it:
+
+```{bash, eval=F}
+for i in aorta coronary tibial esophagus; do
+    bash intermediate/GTEx/transcript_head_$i.sh;
+  done
+```
+
+Load this tissue specific data
+
+```{r}
+for (t in tissues){
+  transcript_tissue <- read.delim(paste('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.',
+                                 t, '.csv', sep = ""),
+                           header = T, check.names = F)
+  assign(paste('transcript_', t, sep = ""), transcript_tissue)
+}
+rm(transcript_tissue)
+```
+
+#### Exon GTEx
+
+Convert parquet to csv:
+
+```{r, eval=F}
+exon_all_genes <- read_parquet('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.parquet',
+                    col_select = 1)
+exon_genes <- which(exon_all_genes$Description %in% symbol_interest)
+meta_artery <- unique(c('Description', 'Name', meta_aorta, meta_tibial, meta_coronary, meta_esophagus))
+
+s <- 1
+for (i in seq(1000, 17000, by=1000)){
+  message(s, ":", i)
+  exon_all <- read_parquet('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.parquet',
+                    col_select = c(s:i))
+  exon_samples_genes <- exon_all[, colnames(exon_all) %in% meta_artery]
+  exon_expr_col <- which(!(colnames(exon_samples_genes) %in% c('Description', 'Name')))
+  exon_libsize <- colSums(exon_samples_genes[,exon_expr_col])
+  exon_samples_genes <- exon_samples_genes[exon_genes,]
+  exon_samples_genes[,exon_expr_col] <- (exon_samples_genes[,exon_expr_col]*1e6)/exon_libsize
+  write.table(as.data.frame(exon_samples_genes),
+              paste('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.',
+                    i, '.csv', sep = ""),
+              row.names = F,
+              quote = T,
+              sep = '\t')
+  s <- i+1
+}
+
+exon_all <- read_parquet('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.parquet',
+                    col_select = c(17001:17384))
+exon_samples_genes <- exon_all[, colnames(exon_all) %in% meta_artery]
+exon_expr_col <- which(!(colnames(exon_samples_genes) %in% c('Description', 'Name')))
+exon_libsize <- colSums(exon_samples_genes[,exon_expr_col])
+exon_samples_genes <- exon_samples_genes[exon_genes,]
+exon_samples_genes[,exon_expr_col] <- (exon_samples_genes[,exon_expr_col]*1e6)/exon_libsize
+write.table(as.data.frame(exon_samples_genes),
+            'intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.17384.csv',
+            row.names = F,
+            quote = T,
+            sep = '\t')
+```
+
+Paste all files together:
+
+```{bash, eval=F}
+paste intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads.*.csv \
+  > intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads_artery_genes_interest.csv
+```
+
+Read the exon files:
+
+```{r}
+exon_artery <- read.delim('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_exon_reads_artery_genes_interest.csv',
+                         header = T, check.names = F, sep = "\t")
+exon_artery <- exon_artery[,c('Description', 'Name', setdiff(colnames(exon_artery), c('Description', 'Name')))]
+#exon_artery[c(1:10), c(1:10)]
+meta_aorta_exon <- c('Description', 'Name',
+                     meta_aorta[meta_aorta %in% colnames(exon_artery)])
+meta_coronary_exon <- c('Description', 'Name',
+                        meta_coronary[meta_coronary %in% colnames(exon_artery)])
+meta_tibial_exon <- c('Description', 'Name',
+                      meta_tibial[meta_tibial %in% colnames(exon_artery)])
+meta_esophagus_exon <- c('Description', 'Name',
+                      meta_esophagus[meta_esophagus %in% colnames(exon_artery)])
+
+exon_aorta <- exon_artery[,meta_aorta_exon]
+exon_coronary <- exon_artery[,meta_coronary_exon]
+exon_tibial <- exon_artery[,meta_tibial_exon]
+exon_esophagus <- exon_artery[,meta_esophagus_exon]
+
+rm(exon_artery)
+dim(exon_aorta)
+dim(exon_coronary)
+dim(exon_tibial)
+dim(exon_esophagus)
+```
+
+#### Exon-exon junction
+
+Find column numbers and subset the data because the full dataset doesn't load.
+
+```{r, eval=F}
+junction_head <- read.delim(gzfile('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_STARv2.5.3a_junctions.gct.gz'),
+                         header = T, skip = 2, check.names = F, nrows = 1)
+
+junction_head_artery <- c(1,2, which(names(junction_head) %in% meta_artery))
+length(junction_head_artery)
+```
+
+Create bash file to extract these columns:
+
+```{r, eval=F}
+junction_head_arteryP <- paste('zcat intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_STARv2.5.3a_junctions.gct.gz | cut -f ',
+                        paste(junction_head_artery, collapse = ','),
+                        '| grep -E "Name|',
+                        paste(genes_interest, collapse = "|"), '" > intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_STARv2.5.3a_junctions.gct.artery.csv', sep = "")
+write(junction_head_arteryP, 'intermediate/GTEx/junction_head_artery.sh')
+```
+
+Execute it:
+
+```{bash, eval=F}
+bash intermediate/GTEx/junction_head_artery.sh
+```
+
+Load this tissue specific data
+
+```{r}
+junction_artery <- read.delim('intermediate/GTEx/GTEx_Analysis_2017-06-05_v8_STARv2.5.3a_junctions.gct.artery.csv',
+                         header = T, check.names = F)
+# junction_artery[c(1:10),c(1:10)]
+meta_aorta_junc <- c('Name', 'Description',
+                     meta_aorta[meta_aorta %in% colnames(junction_artery)])
+meta_coronary_junc <- c('Name', 'Description',
+                        meta_coronary[meta_coronary %in% colnames(junction_artery)])
+meta_tibial_junc <- c('Name', 'Description',
+                      meta_tibial[meta_tibial %in% colnames(junction_artery)])
+meta_esophagus_junc <- c('Name', 'Description',
+                         meta_esophagus[meta_esophagus %in% colnames(junction_artery)])
+
+junction_aorta <- junction_artery[,meta_aorta_junc]
+junction_coronary <- junction_artery[,meta_coronary_junc]
+junction_tibial <- junction_artery[,meta_tibial_junc]
+junction_esophagus <- junction_artery[,meta_esophagus_junc]
+
+rm(junction_artery)
+dim(junction_aorta)
+dim(junction_coronary)
+dim(junction_tibial)
+dim(junction_esophagus)
+```
+
+## MYOCD
+
+Explore the MYOCD data distribution in GTEx and our samples
+
+### DEXSeq
+
+```{r}
+dexseq_MYOCD <- dexseq[grep('ENSG00000141052', dexseq$groupID),]
+# dexseq_MYOCD[dexseq_MYOCD$padj<0.05,
+#             c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+
+![MYOCD transcripts](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/reports/DEXSeqReport/files/ENSG00000141052.18_MYOCDtranscripts.svg)
+
+### ISA
+
+![ISA MYOCD](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/IsoformSwitchAnalyzeR/Null_vs_MYOCD/with_consequences/012_switch_plot_ENSG00000141052.18_aka_MYOCD.png)
+### rMATS
+
+No significant hits in rMATS
+
+```{r}
+# SE
+rMATS_SE[grep('ENSG00000141052', rMATS_SE$GeneID),]
+# A5SS
+rMATS_A5SS[grep('ENSG00000141052', rMATS_A5SS$GeneID),]
+#A3SS
+rMATS_A3SS[grep('ENSG00000141052', rMATS_A3SS$GeneID),]
+# MXE
+rMATS_MXE[grep('ENSG00000141052', rMATS_MXE$GeneID),]
+# RI
+rMATS_RI[grep('ENSG00000141052', rMATS_RI$GeneID),]
+```
+
+### GTEx Gene
+
+```{r}
+for (t in tissues){
+  tissueDF <- get(paste('gene', t, sep='_'))
+  assign(paste('MYOCD',t, 'gene', sep = '_'), as.numeric(tissueDF[tissueDF$Description=="MYOCD",-c(1:3)]))
+}
+```
+
+## MYLK
+
+ENSG00000065534
+
+The results are not convincing.
+
+### ms
+
+usage of 3’ exons in MYLK that encode telokin increased relative to 5’ exons, as did the 17 kDa telokin to 130 kDa MYLK protein ratio
+
+One of the most notable events of differential exon usage detected here involves MYLK, which encodes 130 kDa myosin light chain kinase (MLCK) and 17 kDa telokin.
+
+Two of our analyses showed that 3’ exons in MYLK are preferentially expressed following transduction of MYOCD, and this associates with appearance of a 17 kDa telokin band.
+
+### DEXSeq
+
+MYLK stood out in the DEXSeq results with a relative reduction of several 5’ exons and an increase of a handful of exons towards the 3’ end of the gene.
+
+```{r}
+dexseq_MYLK <- dexseq[grep('ENSG00000065534', dexseq$groupID),]
+# dexseq_MYLK[dexseq_MYLK$padj<0.05,
+#             c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+
+![MYLKtranscripts](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/reports/DEXSeqReport/files/ENSG00000065534.19_MYLKtranscripts.svg)
+
+### ISA
+
+MYLK was also among the top significant genes in the isoform-based results, showing a significant decrease of fractional usage for the longest isoform and corresponding increase in usage of three short isoforms that lack catalytic and actin-binding domains, while retaining the myosin binding domain at the C-terminus (Fig. 3A).
+
+![ISA MYLK](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/IsoformSwitchAnalyzeR/Null_vs_MYOCD/with_consequences/004_switch_plot_ENSG00000065534.19_aka_MYLK.png)
+### rMATS
+
+No significant hits in rMATS
+
+```{r}
+# SE
+rMATS_SE[grep('ENSG00000065534', rMATS_SE$GeneID),]
+# A5SS
+rMATS_A5SS[grep('ENSG00000065534', rMATS_A5SS$GeneID),]
+#A3SS
+rMATS_A3SS[grep('ENSG00000065534', rMATS_A3SS$GeneID),]
+# MXE
+rMATS_MXE[grep('ENSG00000065534', rMATS_MXE$GeneID),]
+# RI
+rMATS_RI[grep('ENSG00000065534', rMATS_RI$GeneID),]
+```
+
+### GTEx transripts
+
+Long transript candidates
+
+  - ENST00000354792.9
+  
+  - ENST00000360772.7
+
+Short transripts candidates
+
+  - ENST00000578202.1
+  
+  - maybe ENST00000583087.5 and ENST00000418370.6
+  
+**We expect short transcripts to be better correlated with MYOCD than long ones.**
+
+The pattern is not conclusive and everything depends on a pair we look at.
+
+```{r, fig.width=10}
+for (i in c('ENST00000578202.1', 'ENST00000418370.6', 'ENST00000583087.5')){
+  for (j in c('ENST00000354792.9', 'ENST00000360772.7')){
+    cocorResDF <- cor_transripts('MYLK', i, j, 'greater')
+  }
+}
+#cocorResDF[cocorResDF$Gene=='MYLK',]
+```
+
+### GTEx exons
+
+Early exons that form long transripts:
+
+  - 34, 19
+
+late exons that form short transripts:
+
+  - exon 37, 36
+  
+**We expect late transcripts to be better correlated with MYOCD than early ones.**
+
+It seems to be the opposite.
+  
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('MYLK', 'ENSG00000065534.18', 37, 34, 19, 'greater')
+cocorResDF <- cor_exons('MYLK', 'ENSG00000065534.18', 36, 34, 19, 'greater')
+#cocorResDF[cocorResDF$Gene=='MYLK',]
+```
+
+### GTEx junction
+
+**Junction 1,3 that represents short transripts should show better correlation than junction 5,9.**
+
+No clearn pattern.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('TPM1', 'ENSG00000140416.19', 1, 5, 9, 'greater')
+cocorResDF <- cor_junction('TPM1', 'ENSG00000140416.19', 3, 5, 9, 'greater')
+#cocorResDF[cocorResDF$Gene=='TPM1',]
+```
+
+## TPM1
+
+ENSG00000140416
+
+TPM1 event involving exon 2 and exon 3. An increase of exon 2 usage and a reduction in usage of the mutually exclusive exon 3 was seen.
+
+TPM1 (Fig. 5E), which was represented in the MXE, A5SS, and SE categories of the rMATS analysis.
+
+### DEXSEq
+
+We have quite a number of differentially used exons in TPM1. I focus only on the
+exons that were also identified by rMATS.
+
+### ISA
+
+No hits.
+
+### rMATS
+
+We have many significant SE hit.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='TPM1' & rMATS_MXE$FDR<=0.1,]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='TPM1' & rMATS_MXE$FDR<=0.1,]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='TPM1' & rMATS_MXE$FDR<=0.1,]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='TPM1' & rMATS_MXE$FDR<=0.1,]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='TPM1' & rMATS_MXE$FDR<=0.1,]
+```
+Mutually exclusive exon pairs:
+
+63043706-63043831 - up-regulated by MYOCD = exon 2 in GTEx.
+63044027-63044152 - down-regulated by MYOCD = exon 3 in GTEx.
+
+63061198-63061273 - down-regulated by MYOCD = exon 8 in GTEx.
+63061713-63061788 - up-regulated by MYOCD = exon 9 in GTEx.
+
+### GTEx transripts
+
+Transripts candidates with exon 2:
+
+  - ENST00000267996.11
+  
+  - ENST00000561425.5
+  
+Transripts candidates without exon 3:
+
+  - ENST00000358278.7
+  
+  - ENST00000559556.5
+  
+  - ENST00000403994.7
+
+Transripts candidates with exon 8:
+
+  - ENST00000358278.7
+  
+  - ENST00000560959.5
+  
+  - ENST00000558314.5
+  
+Transripts candidates without exon 9:
+
+  - ENST00000267996.11
+  
+  - ENST00000334895.9
+  
+  - ENST00000559556.5
+
+Exons 2,3:
+
+**We expect exon 2 to be more correlated with MYOCD** and that's what we see.
+
+```{r, fig.width=12, fig.height=5}
+for (i in c('ENST00000267996.11', 'ENST00000561425.5')){
+  for (j in c('ENST00000358278.7', 'ENST00000559556.5', 'ENST00000403994.7')){
+    cocorResDF <- cor_transripts('TPM1', i, j, 'greater')
+  }
+}
+```
+
+Exons 9,8:
+
+**We expect exon 9 to be more correlated with MYOCD**
+
+```{r, fig.width=12, fig.height=5}
+for (i in c('ENST00000267996.11', 'ENST00000334895.9', 'ENST00000559556.5')){
+  for (j in c('ENST00000358278.7', 'ENST00000560959.5', 'ENST00000558314.5')){
+    cocorResDF <- cor_transripts('TPM1', i, j, 'greater')
+  }
+}
+#cocorResDF[cocorResDF$Gene=='TPM1',]
+```
+
+### GTEx exons
+
+Exons 2,3:
+
+**We expect exon 2 to be more correlated with MYOCD**
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('TPM1', 'ENSG00000140416.19', 2, 3, 1, 'greater')
+cocorResDF <- cocorResDF[-c(which(cocorResDF$Gene=='TPM1' & cocorResDF$Feature2=='exon_1')),]
+```
+
+Exons 9,8:
+
+**We expect exon 9 to be more correlated with MYOCD**
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('TPM1', 'ENSG00000140416.19', 9, 8, 10, 'greater')
+cocorResDF <- cocorResDF[-c(which(cocorResDF$Gene=='TPM1' & cocorResDF$Feature2=='exon_10')),]
+#cocorResDF[cocorResDF$Gene=='TPM1',]
+```
+
+### GTEx junction
+
+Mutually exclusive exon pairs:
+
+63043706-63043831 and 63044027-63044152:
+
+  - junction 2,5 in GTEx - expected to be up-regulated
+  
+  - junction 3 in GTEx - expected to be down-regulated
+  
+63061198-63061273 and 63061713-63061788:
+
+  - junction 17 in GTEx - expected to be up-regulated
+  
+  - junction 16,18 in GTEx - expected to be down-regulated
+  
+The results fit the expectation.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('TPM1', 'ENSG00000140416.19', 3, 2, 5, 'less')
+cocorResDF <- cor_junction('TPM1', 'ENSG00000140416.19', 17, 16, 18, 'greater')
+#cocorResDF[cocorResDF$Gene=='TPM1',]
+```
+
+## SLMAP
+
+ENSG00000163681
+
+### DEXSeq
+
+DEXSeq analysis revealed decreased usage of early exons relative to late exons (Fig. 4A).
+
+### ISA
+
+No significant hits.
+
+### rMATS
+
+No significant hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='SLMAP',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='SLMAP',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='SLMAP',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='SLMAP',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='SLMAP',]
+```
+
+
+### GTEx transripts
+
+Early exon transripts down-regulated:
+
+  - ENST00000295952.7
+  
+  - ENST00000295951.7
+
+Late exon transripts up-regulated:
+
+  - ENST00000417128.5
+  
+  - ENST00000494088.5
+  
+  - ENST00000495364.5
+
+**We expect early exons to be less correlated with MYOCD**
+
+```{r, fig.width=12, fig.height=5}
+for (i in c('ENST00000295952.7', 'ENST00000295951.7')){
+  for (j in c('ENST00000417128.5', 'ENST00000494088.5', 'ENST00000495364.5')){
+    cocorResDF <- cor_transripts('SLMAP', i, j, 'less')
+  }
+}
+#cocorResDF[cocorResDF$Gene=='SLMAP',]
+```
+### GTEx exons
+
+**We expect exon 24,20 to be more correlated with MYOCD than exon 4, 11.**
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('SLMAP', 'ENSG00000163681.14', 24, 4, 11, 'greater')
+cocorResDF <- cor_exons('SLMAP', 'ENSG00000163681.14', 20, 4, 11, 'greater')
+#cocorResDF[cocorResDF$Gene=='SLMAP',]
+```
+
+### GTEx junction
+
+**Skipping junction 22 that form long transripts is expected to be less correlated with MYOCD than junction 23,25.**
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('SLMAP', 'ENSG00000163681.14', 22, 23, 25, 'less')
+#cocorResDF[cocorResDF$Gene=='SLMAP',]
+```
+
+## CALD1
+
+generates heavy (h-caldesmon: 135 kDa) and light (l-caldesmon: 75 kDa) caldesmon, and the heavy isoform is considered specific for SMCs
+
+Other switches were quantitatively smaller as exemplified by SORBS1, and CALD1 (Fig. 5B, C)
+
+ENSG00000122786.19
+
+### DEXSeq
+
+```{r}
+dexseq_CALD1 <- dexseq[grep('ENSG00000122786', dexseq$groupID),]
+dexseq_CALD1[which(dexseq_CALD1$padj<=0.05),
+             c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+
+E031 134933391	134934077 - down-regulated
+E032 134935688	134935765	- down-regulated
+E060 134968876	134970641 - up-regulated
+
+### ISA
+
+No hits
+
+### rMATS
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='CALD1',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='CALD1',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='CALD1',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='CALD1',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='CALD1',]
+```
+
+Too complex to test in GTEx.
+
+## VCL
+
+ENSG00000035403
+
+generates vinculin (130 kDa) along with the heavier SMC-enriched splice variant called meta-vinculin (150 kDa).
+
+### DEXSEq
+
+It is E030 that is up-regulated in MYOCD.
+
+### rMATS
+
+We have 1 significant SE hit.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='VCL',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='VCL',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='VCL',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='VCL',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='VCL',]
+```
+
+74111909-74112112 = exon 23 in GTEx.
+
+### GTEx transripts
+
+Transripts candidates with exon 23:
+
+  - ENST00000211998.9
+
+Transripts candidates without exon 23:
+
+  - ENST00000372755.7
+
+We expect inclusion of the exon 23 to be better correlated with MYOCD
+
+```{r, fig.width=10}
+cocorResDF <- cor_transripts('VCL', 'ENST00000211998.9', 'ENST00000372755.7', 'greater')
+#cocorResDF[cocorResDF$Gene=='VCL',]
+```
+
+### GTEx exons
+
+We expect exon 23 to be more better correlated with MYOCD
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('VCL', 'ENSG00000035403.17', 23, 22, 24, 'greater')
+#cocorResDF[cocorResDF$Gene=='VCL',]
+```
+
+### GTEx junction
+
+Skipping junction 26 that exudes exon 23 is expected to be less correlated with MYOCD than its inclusion.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('VCL', 'ENSG00000035403.17', 26, 25, 27, 'less')
+#cocorResDF[cocorResDF$Gene=='VCL',]
+```
+
+## MBNL1
+
+ENSG00000152601
+
+MYOCD promoted skipping of 36 bp and 95 bp alternative exons in MBNL1
+
+We did examine the MBNL1 protein, but neither its overall level nor its isoform distribution changed in MYOCD transduced cells.
+
+negative correlation between MYOCD and usage of two 36 bp and 95 bp exons in MBNL1 that we identified in DEXSeq/rMATS.
+
+### DEXSeq
+
+E028 - exon 152446704-152446757, GTEx exon 14 - negative relationship with MYOCD
+E031 - exon 152455542-152455577, GTEx exon 16 - negative relationship with MYOCD
+
+E032 -  exon 152456267-152456361, GTEx exon 17 - negative relationship with MYOCD
+E034 -  exon 152458130-152458193, GTEx exon 18 - positive relationship with MYOCD
+
+```{r}
+dexseq_MBNL1 <- dexseq[grep('ENSG00000152601', dexseq$groupID),]
+# dexseq_MBNL1[dexseq_MBNL1$padj<0.05,
+#             c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+
+![MBNL1transcripts](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/reports/DEXSeqReport/files/ENSG00000152601.17_MBNL1transcripts.svg)
+
+### ISA
+
+No hits in ISA
+
+### rMATS
+
+We have 1 significant SE hit.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='MBNL1',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=="MBNL1",]
+#A3SS
+rMATS_A3SS[rMATS_A5SS$geneSymbol=="MBNL1",]
+# MXE
+rMATS_MXE[rMATS_A5SS$geneSymbol=="MBNL1",]
+# RI
+rMATS_RI[rMATS_A5SS$geneSymbol=="MBNL1",]
+```
+
+152458130-152458193 in GTEx:
+
+  - exon 18 is skipped - junction 29
+  
+  - exon 18 is included - junction 28, 30
+
+152456267-152456361 in GTEx:
+
+  - exon 17 is skipped - junction 27, 25.
+  
+  - exon 17 is included - junction 24, 26, 28, 29.
+
+### GTEx transripts
+
+Transripts candidates with exon 18:
+
+  - ENST00000324196.9
+
+Transripts candidates with exon 17 (14, 16):
+
+  - ENST00000463374.5
+  
+  - ENST00000545754.5
+  
+  - ENST00000324210.9
+  
+**We expect inclusion of exon 18 to be better correlated with MYOCD than inclusion of exon 17**
+
+```{r, fig.width=10}
+for (i in c('ENST00000463374.5', 'ENST00000545754.5', 'ENST00000324210.9')){
+    cocorResDF <- cor_transripts('MBNL1', 'ENST00000324196.9', i, 'greater')
+}
+#cocorResDF[cocorResDF$Gene=='MBNL1',]
+```
+
+### GTEx exons
+
+**We expect exon 18 to be better correlated with MYOCD than other exons.**
+
+We see it only for coronary.
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('MBNL1', 'ENSG00000152601.17', 18, 17, 19, 'greater')
+cocorResDF <- cor_exons('MBNL1', 'ENSG00000152601.17', 18, 16, 14, 'greater')
+#cocorResDF[cocorResDF$Gene=='MBNL1',]
+```
+
+### GTEx junction
+
+152458130-152458193 in GTEx:
+
+  - exon 18 is skipped - junction 29
+  
+  - exon 18 is included - junction 28, 30.
+
+Skipping junction 29 that exudes exon 18 is expected to be less correlated with MYOCD than
+its inclusion.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('MBNL1', 'ENSG00000152601.17', 29, 28, 30, 'less')
+#cocorResDF[cocorResDF$Gene=='MBNL1',]
+```
+## ACTN1
+
+ENSG00000072110
+
+ACTN1 event, which involves switching from a mutually exclusive exon encoding a Ca2+-binding EF-hand to a variant that does not bind Ca2+, as observed in mature SMCs.
+
+ACTN1, the splicing event detected abrogates Ca2+-binding
+
+MYOCD would correlate negatively with usage of an exon that encodes a Ca2+-binding domain in ACTN1.
+
+### DEXSeq
+
+```{r}
+dexseq_ACTN1 <- dexseq[grep('ENSG00000072110', dexseq$groupID),]
+dexseq_ACTN1[dexseq_ACTN1$padj<0.05,
+            c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+
+### ISA
+
+No hits in ISA
+
+### rMATS
+
+We have 2 significant SE hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='ACTN1',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='ACTN1',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='ACTN1',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='ACTN1',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='ACTN1',]
+```
+
+68878458-68878523 exon 28 in GTEx:
+
+  - up-regulated in our DEXSeq and rMATs results
+  
+  - exon 28 is skipped = junction 4,5
+
+68878989-68879069 exon 27 in GTEx:
+
+  - down-regulated in our DEXSeq and rMATs results
+  
+  - exon 27 is skipped = junction 5, 7.
+
+### GTEx transripts
+
+Transripts candidates with exon 27 and no 28:
+
+  - ENST00000193403.10
+
+Transripts candidates with exon 28 and no 27:
+
+  - ENST00000438964.6
+
+**We expect inclusion of the exon 28 to be better correlated with MYOCD**
+
+```{r, fig.width=10}
+cocorResDF <- cor_transripts('ACTN1', 'ENST00000438964.6', 'ENST00000193403.10', 'greater')
+#cocorResDF[cocorResDF$Gene=='ACTN1',]
+```
+
+### GTEx exons
+
+We expect exon 28 to be better correlated with MYOCD than exon 27.
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('ACTN1', 'ENSG00000072110.13', 28, 27, 29, 'greater')
+cocorResDF <- cocorResDF[-c(which(cocorResDF$Gene=='ACTN1' & cocorResDF$Feature2=='exon_29')),]
+#cocorResDF[cocorResDF$Gene=='ACTN1',]
+```
+
+### GTEx junction
+
+68878458-68878523 in GTEx:
+
+  - exon 28 is skipped in junction 4
+
+68878989-68879069 in GTEx:
+
+  - exon 27 is skipped in junction 7.
+  
+We expect the opposite relationship from the expression pattern:
+
+  - junction 4 is less correlated with MYOCD than  junction 7.
+
+This is what we observe.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('MBNL1', 'ENSG00000072110.13', 4, 7, 8, 'less')
+cocorResDF <- cocorResDF[-c(which(cocorResDF$Gene=='MBNL1' & cocorResDF$Feature2=='junction_8')),]
+#cocorResDF[cocorResDF$Gene=='MBNL1',]
+```
+
+## MCAM
+
+ENSG00000076706
+
+### DEXSeq
+
+No hits in DEXSeq
+
+### ISA
+
+No hits in ISA
+
+### rMATS
+
+We have 1 significant SE and RI hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='MCAM',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='MCAM',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='MCAM',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='MCAM',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='MCAM',]
+```
+
+119310349-119310466 exon 21 in GTEx:
+
+  - down-regulated in our rMATs results
+  
+  - exon 28 is skipped = junction 4,5
+
+### GTEx transripts
+
+Transripts candidates with exon 21:
+
+  - ENST00000264036.5
+
+Transripts candidates without exon 21:
+
+  - ENST00000524940.5
+
+**We expect skipping exon 21 to be better correlated with MYOCD**
+
+It seems to be the opposite.
+
+```{r, fig.width=10}
+cocorResDF <- cor_transripts('MCAM', 'ENST00000524940.5', 'ENST00000264036.5', 'greater')
+#cocorResDF[cocorResDF$Gene=='MCAM',]
+```
+
+### GTEx exons
+
+**We expect exon 21 to be less correlated with MYOCD.**
+
+We do not see that
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('MCAM', 'ENSG00000076706.16', 21, 23, 20, 'less')
+cocorResDF <- cor_exons('MCAM', 'ENSG00000076706.16', 21, 19, 18, 'less')
+cocorResDF <- cocorResDF[-c(which(cocorResDF$Gene=='MCAM' & cocorResDF$Feature2=='exon_18')),]
+#cocorResDF[cocorResDF$Gene=='MCAM',]
+```
+
+### GTEx junction
+
+  - exon 21 is skipped in junction 3
+  
+  - exon 21 is included in junction 2,5.
+  
+Skipping junction 3 that exudes exon 21 is expected to be better correlated with MYOCD than its inclusion.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('MCAM', 'ENSG00000076706.16', 3, 2, 5, 'greater')
+#cocorResDF[cocorResDF$Gene=='MCAM',]
+```
+
+## LRRC17
+
+ENSG00000128606
+
+### DEXSeq
+
+E010 102942290-102942342 is down-regulated.
+
+It is exon 6 in GTEx.
+
+### ISA
+
+![LRRC17 ISA](/home/dmytro/Science/myocardin_splicing_Ola_Karl/results/figures/IsoformSwitchAnalyzeR/Null_vs_MYOCD/with_consequences/006_switch_plot_ENSG00000128606.13_aka_LRRC17.png)
+
+### rMATS
+
+We have 1 significant SE and RI hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='LRRC17',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='LRRC17',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='LRRC17',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='LRRC17',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='LRRC17',]
+```
+
+102942290-102942342 exon 6 in GTEx:
+
+  - down-regulated in our rMATs results
+
+### GTEx transripts
+
+Transripts candidates with exon 6:
+
+  - ENST00000249377.4
+
+Transripts candidates without exon 6:
+
+  - ENST00000339431.8
+
+**We expect inclusion of exon 6 to be less correlated with MYOCD**
+
+```{r, fig.width=10}
+cocorResDF <- cor_transripts('LRRC17', 'ENST00000249377.4', 'ENST00000339431.8', 'less')
+#cocorResDF[cocorResDF$Gene=='LRRC17',]
+```
+
+### GTEx exons
+
+**We expect exon 6 to be less correlated with MYOCD**
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('LRRC17', 'ENSG00000128606.12', 6, 5, 7, 'less')
+#cocorResDF[cocorResDF$Gene=='LRRC17',]
+```
+
+### GTEx junction
+
+  - exon 6 is skipped in junction 7
+  
+  - exon 6 is included in junction 6,8.
+  
+Skipping junction 7 that exudes exon 6 is expected to be better correlated with MYOCD than its inclusion.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('LRRC17', 'ENSG00000128606.12', 7, 6, 8, 'greater')
+#cocorResDF[cocorResDF$Gene=='LRRC17',]
+```
+
+## SMAD9
+
+ENSG00000120693.13
+
+### DEXSeq
+
+no hits
+
+### ISA
+
+no hits
+
+### rMATS
+
+We have 1 significant SE hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='SMAD9',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='SMAD9',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='SMAD9',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='SMAD9',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='SMAD9',]
+```
+
+36867273-36867383 exon 5 in GTEx:
+
+  - down-regulated in our rMATs results
+  
+  - skipped = junction 4.
+
+### GTEx transripts
+
+Transripts candidates with exon 5:
+
+  - ENST00000399275.6
+
+Transripts candidates without exon 5:
+
+  - ENST00000350148.9
+
+**We expect exon 5 to be less correlated with MYOCD**
+
+```{r, fig.width=10}
+cocorResDF <- cor_transripts('SMAD9', 'ENST00000399275.6', 'ENST00000350148.9', 'less')
+#cocorResDF[cocorResDF$Gene=='SMAD9',]
+```
+
+### GTEx exons
+
+**We expect exon 5 to be less correlated with MYOCD.**
+
+We do not see that
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('SMAD9', 'ENSG00000120693.13', 5, 4, 6, 'less')
+#cocorResDF[cocorResDF$Gene=='SMAD9',]
+```
+
+### GTEx junction
+
+Skipping junction 4 that exudes exon 5 is expected to be better correlated with MYOCD than its inclusion.
+
+```{r, fig.width=10}
+cocorResDF <- cor_junction('SMAD9', 'ENSG00000120693.13', 4, 3, 5, 'greater')
+#cocorResDF[cocorResDF$Gene=='SMAD9',]
+```
+
+## PPP1R12A
+
+ENSG00000058272.16
+
+inclusion of exon 24 in the myosin phosphatase (MYPT1, encoded by the gene PPP1R12A).
+
+MYPT1 (PPP1R12A), which encodes the myosin phosphatase targeting subunit, affects nitric oxide-dependent arterial dilatation and blood pressure [31; 32]. An interesting observation in this case was that exon 24 inclusion was absent under basal conditions and seen only after overexpression of MYOCD.
+
+
+### DEXSeq
+
+```{r}
+dexseq_MYOCD <- dexseq[grep('ENSG00000058272', dexseq$groupID),]
+dexseq_MYOCD[which(dexseq_MYOCD$padj<=0.05),
+             c("featureID", "dispersion", 'padj', "log2fold_treatment_control")]
+```
+Up-regulated bins:
+
+  - E013 79778601-79779320
+  
+  - E014 79779321-79779338
+  
+  - E015 79779339-79779351
+
+It is exon 28 in GTEx.
+
+### ISA
+
+No hits.
+
+### rMATS
+
+We have 1 significant SE and RI hits.
+
+```{r}
+# SE
+rMATS_SE[rMATS_SE$geneSymbol=='PPP1R12A',]
+# A5SS
+rMATS_A5SS[rMATS_A5SS$geneSymbol=='PPP1R12A',]
+#A3SS
+rMATS_A3SS[rMATS_A3SS$geneSymbol=='PPP1R12A',]
+# MXE
+rMATS_MXE[rMATS_MXE$geneSymbol=='PPP1R12A',]
+# RI
+rMATS_RI[rMATS_RI$geneSymbol=='PPP1R12A',]
+```
+Intron retention of 79778550-79779351 is up-regulated in exon 79779321-79779351.
+
+GTEx - corresponds to exon 28 in annotation and exon 6 in ENST00000548908.2
+
+### GTEx transripts
+
+Transripts candidates with intron retention:
+
+  - ENST00000548908.2
+  
+  - ENST00000552892.1 (maybe)
+
+Transripts candidates without intron retention:
+
+  - ENST00000450142.6
+  
+  - ENST00000261207.9
+  
+  - ENST00000550351.5
+  
+  - ENST00000550107.5
+
+Transripts candidates with exon 28:
+
+  - ENST00000550299.5
+  
+
+**We expect exon 28 and intron retention to be more correlated with MYOCD**
+
+```{r, fig.width=10}
+for (i in c('ENST00000450142.6', 'ENST00000261207.9', 'ENST00000550351.5', 'ENST00000550299.5')){
+    cocorResDF <- cor_transripts('PPP1R12A', 'ENST00000548908.2', i, 'greater')
+    cocorResDF <- cor_transripts('PPP1R12A', 'ENST00000552892.1', i, 'greater')
+}
+#cocorResDF[cocorResDF$Gene=='PPP1R12A',]
+```
+
+### GTEx exons
+
+**We expect exon 28 to be more correlated with MYOCD.**
+
+```{r, fig.width=12, fig.height=5}
+cocorResDF <- cor_exons('PPP1R12A', 'ENSG00000058272.16', 28, 29, 27, 'greater')
+cocorResDF <- cor_exons('PPP1R12A', 'ENSG00000058272.16', 28, 30, 20, 'greater')
+#cocorResDF[cocorResDF$Gene=='PPP1R12A',]
+```
+
+### GTEx junction
+
+  - exon 28 is skipped in junction 4
+  
+  - exon 28 is included in junction 3,5.
+  
+Skipping junction 4 is expected to be less correlated with MYOCD.
+
+```{r, fig.width=10, fig.height=5}
+cocorResDF <- cor_junction('PPP1R12A', 'ENSG00000058272.16', 4, 3, 5, 'less')
+#cocorResDF[cocorResDF$Gene=='PPP1R12A',]
+```
+
+## RBPMS, RBPMS2, RBFOX2
+
+ENSG00000157110 - RBPMS
+ENSG00000166831 - RBPMS2
+ENSG00000100320 - RBFOX2
+
+MYOCD regulates the splicing factors RBPMS and RBFOX2
+
+MYOCD regulates the splicing factors RBPMS and RBFOX2
+
+RBPMS and RBFOX bind to each other [65], and given that silencing of either of them impairs MYOCD-driven splicing
+
+Does SMC MYOCD, that is the variant without exon 2a, correlate better with RBPMS than does MYOCD including exon 2a
+
+### GTEx transripts
+
+**Does MYOCD without exon 2a correlate better with RBPMS than does MYOCD including exon 2a**
+
+We see the opposite but probably because of too low expression of transripts without 2a.
+
+```{r, fig.width=12, fig.height=5}
+par(mfrow=c(1,2))
+RBPMS_transripts_hypothesis <- 'greater'
+for (t in tissues){
+  transcriptDF <- get(paste('transcript', t, sep = '_'))
+  geneDF <- get(paste('gene', t, sep = '_'))
+  
+  assign(paste('MYOCD',t, 'ENST00000579237', sep = '_'),
+         check_transcript('ENST00000579237.5', transcriptDF))
+  assign(paste('RBPMS', t, 'gene', sep='_'),
+         as.numeric(geneDF[geneDF$Description=="RBPMS",-c(1:3)]))
+  assign(paste('MYOCD',t, 'ENST00000425538', sep = '_'),
+         check_transcript('ENST00000425538.5', transcriptDF))
+  
+  MYOCDexon2a <- paste('MYOCD',t, 'ENST00000579237', sep = '_')
+  MYOCDnoExon2a <- paste('MYOCD',t, 'ENST00000425538', sep = '_')
+  RBPMSname <- paste('RBPMS', t, 'gene', sep='_')
+  cocor_resRBPMS <- cocor_test(RBPMSname, MYOCDexon2a, MYOCDnoExon2a, RBPMS_transripts_hypothesis)
+  # to append the results
+    DFrowName <- paste(t, 'RBPMS', 'transripts', sep = "_")
+  if (!(DFrowName %in% rownames(cocorResRBPMS))){
+    cocorResRBPMS[nrow(cocorResRBPMS)+1,] <- 'NA'
+    rownames(cocorResRBPMS)[nrow(cocorResRBPMS)] <- DFrowName
+  }
+  cocorResRBPMS[DFrowName,] <- c(t,
+                                 MYOCDexon2a, MYOCDnoExon2a,
+                                 cocor_resRBPMS[1], cocor_resRBPMS[2],
+                                 cocor_resRBPMS[3], RBPMS_transripts_hypothesis)
+}
+```
+
+### GTEx exons
+
+exon 3 = exon 2a.
+
+```{r, fig.width=12, fig.height=5}
+RBPMS_exons_hypothesis <- 'greater'
+par(mfrow=c(1,3))
+for (t in tissues){
+  exonDF <- get(paste('exon', t, sep = '_'))
+  exonDF_myocd <- exonDF[which(exonDF$Description=='MYOCD'),]
+
+  assign(paste('MYOCD', t, 'exon_3', sep = '_'), as.numeric(exonDF_myocd[3,-c(1:2)]))
+  assign(paste('MYOCD', t, 'exon_2', sep = '_'), as.numeric(exonDF_myocd[2,-c(1:2)]))
+  assign(paste('MYOCD', t, 'exon_4', sep = '_'), as.numeric(exonDF_myocd[4,-c(1:2)]))
+
+  MYOCDexon3 <- paste(paste('MYOCD', t, 'exon_3', sep = '_'))
+  MYOCDexon2 <- paste(paste('MYOCD', t, 'exon_2', sep = '_'))
+  MYOCDexon4 <- paste(paste('MYOCD', t, 'exon_4', sep = '_'))
+  RBPMSname <- paste('RBPMS', t, 'gene', sep='_')
+  
+  for (e in c(MYOCDexon2, MYOCDexon4)){
+    cocor_resRBPMS <- cocor_test(RBPMSname, MYOCDexon3, e, RBPMS_exons_hypothesis)
+    # to append the results
+    DFrowName <- paste(t, 'RBPMS', e, sep = "_")
+    if (!(DFrowName %in% rownames(cocorResRBPMS))){
+      cocorResRBPMS[nrow(cocorResRBPMS)+1,] <- 'NA'
+      rownames(cocorResRBPMS)[nrow(cocorResRBPMS)] <- DFrowName
+    }
+    cocorResRBPMS[DFrowName,] <- c(t,
+                                   MYOCDexon3, e,
+                                   cocor_resRBPMS[1], cocor_resRBPMS[2],
+                                   cocor_resRBPMS[3], RBPMS_exons_hypothesis)
+  }
+}
+```
+
+### GTEx junction
+
+in GTEx:
+
+  - exon 2a is skipped = junction 3
+  
+  - exon 2a is included = junction 2,4
+  
+```{r, fig.width=12, fig.height=5}
+RBPMS_junction_hypothesis <- 'less'
+par(mfrow=c(1,3))
+for (t in tissues){
+  junctionDF <- get(paste('junction', t, sep = '_'))
+  junctionDF_myocd <- junctionDF[which(junctionDF$Description=='ENSG00000141052.17'),]
+  
+  assign(paste('MYOCD', t, 'junction_3', sep = '_'), as.numeric(junctionDF_myocd[3,-c(1:2)]))
+  assign(paste('MYOCD', t, 'junction_2', sep = '_'), as.numeric(junctionDF_myocd[2,-c(1:2)]))
+  assign(paste('MYOCD', t, 'junction_4', sep = '_'), as.numeric(junctionDF_myocd[4,-c(1:2)]))
+
+  MYOCDjunction3 <- paste(paste('MYOCD', t, 'junction_3', sep = '_'))
+  MYOCDjunction2 <- paste(paste('MYOCD', t, 'junction_2', sep = '_'))
+  MYOCDjunction4 <- paste(paste('MYOCD', t, 'junction_4', sep = '_'))
+  RBPMSname <- paste('RBPMS', t, 'gene', sep='_')
+  
+  for (e in c(MYOCDjunction2, MYOCDjunction4)){
+    cocor_resRBPMS <- cocor_test(RBPMSname, MYOCDjunction3, e, RBPMS_junction_hypothesis)
+    # to append the results
+    DFrowName <- paste(t, 'RBPMS', e, sep = "_")
+    if (!(DFrowName %in% rownames(cocorResRBPMS))){
+      cocorResRBPMS[nrow(cocorResRBPMS)+1,] <- 'NA'
+      rownames(cocorResRBPMS)[nrow(cocorResRBPMS)] <- DFrowName
+    }
+    cocorResRBPMS[DFrowName,] <- c(t,
+                                   MYOCDjunction3, e,
+                                   cocor_resRBPMS[1], cocor_resRBPMS[2],
+                                   cocor_resRBPMS[3], RBPMS_junction_hypothesis)
+  }
+}
+```
+
+## Write tables
+
+```{r}
+dir.table <- 'results/tables/GTEx/'
+dir.create(dir.table, showWarnings = F)
+write.table(cocorResDF,
+            paste(dir.table, 'GTEx_key_gene_correlation_with_MYOCD.csv', sep = "/"),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+write.table(cocorResRBPMS,
+            paste(dir.table, 'GTEx_RBPMS_correlation_with_MYOCD.csv', sep = "/"),
+            quote = T,
+            row.names = F,
+            sep = '\t')
+```
